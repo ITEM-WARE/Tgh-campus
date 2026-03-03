@@ -1,0 +1,8 @@
+{
+  "name": "TGH Campus",
+  "description": "A Cyber-Luxury campus social and academic hub featuring AI-powered tutoring, real-time messaging, and a gamified academic arena.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

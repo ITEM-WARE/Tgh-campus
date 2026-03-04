@@ -249,6 +249,22 @@ db.exec(`
     campus_id TEXT DEFAULT 'main'
   );
 
+  CREATE TABLE IF NOT EXISTS likes (
+    user_id TEXT,
+    post_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, post_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS message_reads (
+    message_id TEXT,
+    user_id TEXT,
+    read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, user_id),
+    FOREIGN KEY (message_id) REFERENCES messages(id)
+  );
+
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     type TEXT DEFAULT 'private', -- 'private', 'group', 'section', 'broadcast'
@@ -399,9 +415,9 @@ if (existingItems.count === 0) {
     { id: 'chat_bubble_blue', name: 'Blue Bubble', description: 'Custom blue chat bubble.', category: 'chat', price: 300, type: 'digital' },
     { id: 'badge_early', name: 'Early Adopter', description: 'Badge for early users.', category: 'badge', price: 5000, type: 'digital' }
   ];
-  const insert = db.prepare("INSERT INTO store_items (id, name, description, category, price, type) VALUES (?, ?, ?, ?, ?, ?)");
+  const insert = db.prepare("INSERT INTO store_items (id, name, description, category, price, type, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)");
   for (const item of seedItems) {
-    insert.run(item.id, item.name, item.description, item.category, item.price, item.type);
+    insert.run(item.id, item.name, item.description, item.category, item.price, item.type, '{}');
   }
 }
 
@@ -633,6 +649,26 @@ async function startServer() {
     const { id } = req.params;
     const comments = db.prepare("SELECT c.*, u.username, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC").all(id);
     res.json(comments);
+  });
+
+  // Store management
+  app.get("/api/admin/store", authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+    const items = db.prepare("SELECT * FROM store_items").all();
+    res.json(items);
+  });
+
+  app.post("/api/admin/store", authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+    const { id, name, description, category, price, type } = req.body;
+    db.prepare("INSERT INTO store_items (id, name, description, category, price, type, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, name, description, category, price, type, '{}');
+    res.json({ success: true });
+  });
+
+  app.delete("/api/admin/store/:id", authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+    db.prepare("DELETE FROM store_items WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
   });
 
   app.get("/api/users/:id", authenticate, (req: any, res) => {
@@ -946,15 +982,24 @@ async function startServer() {
     const status = type === 'confession' ? 'pending' : 'approved';
     const id = `post_${Math.random().toString(36).substr(2, 9)}`;
     
-    db.prepare("INSERT INTO posts (id, user_id, content, type, status, media_url, title, tags, voice_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, req.user.id, content, type, status, media_url || null, title, tags, voice_url);
+    db.prepare("INSERT INTO posts (user_id, content, type, status, media_url, title, tags, voice_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(req.user.id, content, type, status, media_url || null, title, tags, voice_url);
     
     logAction(req.user.id, 'create_post', id, `Created ${type} post`, req.ip);
     res.json({ id, status });
   });
 
   app.post("/api/posts/:id/like", authenticate, (req: any, res) => {
-    db.prepare("UPDATE posts SET engagement_score = engagement_score + 0.1 WHERE id = ?").run(req.params.id);
+    const postId = parseInt(req.params.id);
+    const userId = req.user.id;
+    
+    const existingLike = db.prepare("SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?").get(userId, postId);
+    if (existingLike) {
+      return res.status(400).json({ error: "Already liked" });
+    }
+    
+    db.prepare("INSERT INTO likes (user_id, post_id) VALUES (?, ?)").run(userId, postId);
+    db.prepare("UPDATE posts SET engagement_score = engagement_score + 0.1 WHERE id = ?").run(postId);
     res.json({ success: true });
   });
 
@@ -1661,6 +1706,19 @@ async function startServer() {
       
       // Update conversation last activity
       db.prepare("UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?").run(conversationId);
+    });
+
+    socket.on("message-read", (data: any) => {
+      const { messageId, conversationId } = data;
+      const userId = socket.userId;
+      if (!userId) return;
+      
+      try {
+        db.prepare("INSERT INTO message_reads (message_id, user_id) VALUES (?, ?)").run(messageId, userId);
+        socket.to(conversationId).emit("message-read", { messageId, userId });
+      } catch (e) {
+        // Ignore duplicate reads
+      }
     });
 
     socket.on("typing", (data: any) => {

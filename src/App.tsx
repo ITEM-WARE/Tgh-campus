@@ -619,7 +619,7 @@ function OnboardingView({ user, onComplete }: { user: User, onComplete: (u: User
 }
 
 function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
-  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'queue' | 'audit' | 'ips' | 'security' | 'academics' | 'tickets' | 'tasks' | 'redeem'>('stats');
+  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'queue' | 'audit' | 'ips' | 'security' | 'academics' | 'tickets' | 'tasks' | 'redeem' | 'store'>('stats');
   const [stats, setStats] = useState<any>(null);
   const [queue, setQueue] = useState<any[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -630,6 +630,7 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
   const [lockdown, setLockdown] = useState(false);
   const [academicForm, setAcademicForm] = useState({ type: 'homework', title: '', content: '', grade: '', section: '', subject: '', due_date: '' });
   const [redeemForm, setRedeemForm] = useState({ code: '', reward_type: 'toins', reward_value: '', max_uses: 100, hint: '', is_treasure_hunt: false });
+  const [storeItems, setStoreItems] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -651,6 +652,8 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
         fetch('/api/admin/tickets').then(r => r.json()).then(setAdminTickets);
       } else if (activeAdminTab === 'tasks') {
         fetch('/api/admin/tasks/submissions').then(r => r.json()).then(setTaskSubs);
+      } else if (activeAdminTab === 'store') {
+        fetch('/api/admin/store').then(r => r.json()).then(setStoreItems);
       }
     };
     fetchData();
@@ -712,6 +715,7 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
         <AdminTab active={activeAdminTab === 'tickets'} onClick={() => setActiveAdminTab('tickets')} icon={<TicketIcon />} label="Tickets" count={adminTickets.length} />
         <AdminTab active={activeAdminTab === 'tasks'} onClick={() => setActiveAdminTab('tasks')} icon={<ClipboardList />} label="Tasks" count={taskSubs.length} />
         <AdminTab active={activeAdminTab === 'redeem'} onClick={() => setActiveAdminTab('redeem')} icon={<Gift />} label="Codes" />
+        <AdminTab active={activeAdminTab === 'store'} onClick={() => setActiveAdminTab('store')} icon={<ShoppingBag />} label="Store" />
       </div>
 
       <AnimatePresence mode="wait">
@@ -1117,6 +1121,70 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
                     GENERATE CODE
                   </NeonButton>
                 </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+
+        {activeAdminTab === 'store' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <GlassCard className="p-6">
+              <h3 className="text-xl font-black tracking-tighter mb-6">STORE MANAGEMENT</h3>
+              <div className="space-y-4">
+                {storeItems.map(item => (
+                  <div key={item.id} className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
+                    <div>
+                      <p className="font-bold">{item.name}</p>
+                      <p className="text-xs text-white/40">{item.description} - {item.price} Toins</p>
+                    </div>
+                    <button 
+                      onClick={async () => {
+                        const res = await fetch(`/api/admin/store/${item.id}`, { method: 'DELETE' });
+                        if (res.ok) setStoreItems(prev => prev.filter(i => i.id !== item.id));
+                      }}
+                      className="text-cyber-pink hover:text-white"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 pt-6 border-t border-white/10">
+                <h4 className="font-bold mb-4">Add New Item</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <input placeholder="ID" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2" id="new-item-id" />
+                  <input placeholder="Name" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2" id="new-item-name" />
+                  <input placeholder="Description" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2" id="new-item-desc" />
+                  <input placeholder="Category" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2" id="new-item-cat" />
+                  <input placeholder="Price" type="number" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2" id="new-item-price" />
+                  <select className="bg-white/5 border border-white/10 rounded-xl px-4 py-2" id="new-item-type">
+                    <option value="digital">Digital</option>
+                  </select>
+                </div>
+                <NeonButton 
+                  className="w-full mt-4"
+                  onClick={async () => {
+                    const newItem = {
+                      id: (document.getElementById('new-item-id') as HTMLInputElement).value,
+                      name: (document.getElementById('new-item-name') as HTMLInputElement).value,
+                      description: (document.getElementById('new-item-desc') as HTMLInputElement).value,
+                      category: (document.getElementById('new-item-cat') as HTMLInputElement).value,
+                      price: parseInt((document.getElementById('new-item-price') as HTMLInputElement).value),
+                      type: (document.getElementById('new-item-type') as HTMLInputElement).value,
+                    };
+                    const res = await fetch('/api/admin/store', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(newItem)
+                    });
+                    if (res.ok) {
+                      alert("Item added!");
+                      setStoreItems([...storeItems, newItem]);
+                    }
+                  }}
+                >
+                  ADD ITEM
+                </NeonButton>
               </div>
             </GlassCard>
           </motion.div>
@@ -1934,7 +2002,7 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [newChatUsername, setNewChatUsername] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1974,8 +2042,12 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
     };
 
     const handleTyping = ({ userId, isTyping }: any) => {
-      if (isTyping) setTypingUser(userId);
-      else setTypingUser(null);
+      setTypingUsers(prev => {
+        const next = new Set(prev);
+        if (isTyping) next.add(userId);
+        else next.delete(userId);
+        return next;
+      });
     };
 
     socket.on("new-message", handleNewMessage);
@@ -1989,7 +2061,7 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, typingUser]);
+  }, [messages, typingUsers]);
 
   const handleSend = () => {
     if (!input.trim() || !activeConv) return;
@@ -2155,7 +2227,7 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
                     </div>
                   );
                 })}
-                {typingUser && (
+                {typingUsers.size > 0 && (
                   <div className="flex justify-start">
                     <div className="bg-white/10 border border-white/20 text-white rounded-2xl rounded-tl-none p-3 px-4 shadow-lg backdrop-blur-md flex items-center gap-2">
                       <div className="flex gap-1">

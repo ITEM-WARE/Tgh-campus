@@ -51,19 +51,40 @@ import {
   CreditCard,
   Palette,
   Layout,
-  Type as TypeIcon
+  Type as TypeIcon,
+  Check,
+  CheckCheck,
+  Trophy,
+  ClipboardList,
+  Ticket as TicketIcon,
+  Store,
+  Gift,
+  MousePointer2,
+  ZapOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { format, formatDistanceToNow } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { User, Message, AuditLog, IPCluster, SecurityEvent, Session, DeviceSession, Story, Conversation, Listing, Notification, Friendship, Transaction, AcademicMaterial, DiscussionQuery } from './types';
-import { getStudyBuddyResponse, analyzeImage, generateSpeech } from './services/geminiService';
+import { User, Message, AuditLog, IPCluster, SecurityEvent, Session, DeviceSession, Story, Conversation, Listing, Notification, Friendship, Transaction, AcademicMaterial, DiscussionQuery, StoreItem, UserInventory, Task, TaskSubmission, Challenge, Ticket, AIHistory } from './types';
+import { getStudyBuddyResponse, analyzeImage, generateSpeech } from './geminiService';
+
+import { Chat } from './components/Chat';
+import { VoiceRecorder } from './components/VoiceRecorder';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};
 
 // --- Shared Components ---
 
@@ -103,12 +124,14 @@ const Avatar = ({ src, seed, size = 'md', online }: { src?: string | null, seed:
 };
 
 const GlassCard = ({ children, className, onClick }: { children: React.ReactNode, className?: string, onClick?: () => void }) => (
-  <div 
+  <motion.div 
+    whileHover={{ y: -2 }}
+    transition={{ type: "spring", stiffness: 300, damping: 20 }}
     onClick={onClick}
     className={cn("glass-panel p-4 transition-all duration-300 hover:border-white/20", className)}
   >
     {children}
-  </div>
+  </motion.div>
 );
 
 const NeonButton = ({ children, onClick, variant = 'neon', className, disabled, type = 'button' }: { children: React.ReactNode, onClick?: () => void, variant?: 'neon' | 'pink' | 'blue' | 'ghost' | 'danger', className?: string, disabled?: boolean, type?: 'button' | 'submit' }) => {
@@ -121,7 +144,9 @@ const NeonButton = ({ children, onClick, variant = 'neon', className, disabled, 
   };
 
   return (
-    <button 
+    <motion.button 
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
       type={type}
       disabled={disabled}
       onClick={onClick}
@@ -132,7 +157,7 @@ const NeonButton = ({ children, onClick, variant = 'neon', className, disabled, 
       )}
     >
       {children}
-    </button>
+    </motion.button>
   );
 };
 
@@ -153,7 +178,7 @@ const GatedFeature = ({ status, children, fallback }: { status: string, children
 
 export default function App() {
   const [view, setView] = useState<'auth' | 'onboarding' | 'app' | 'admin'>('auth');
-  const [activeTab, setActiveTab] = useState<'hub' | 'chat' | 'study' | 'market' | 'profile' | 'security' | 'custom'>('hub');
+  const [activeTab, setActiveTab] = useState<'hub' | 'chat' | 'study' | 'store' | 'profile' | 'security' | 'custom' | 'tasks' | 'leaderboard' | 'tickets'>('hub');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -162,8 +187,13 @@ export default function App() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
       try {
-        const res = await fetch('/api/users/me');
+        const res = await fetch('/api/users/me', { signal: controller.signal, credentials: 'include' });
+        clearTimeout(timeoutId);
+
         if (res.ok) {
           const data = await res.json();
           setUser(data);
@@ -173,11 +203,12 @@ export default function App() {
         } else {
           setView('auth');
         }
-      } catch (e) { 
-        console.error(e);
+      } catch (e: any) { 
+        console.error("Auth check failed:", e);
         setView('auth');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     checkAuth();
   }, []);
@@ -228,8 +259,24 @@ export default function App() {
     <div className="min-h-screen bg-cyber-dark text-white selection:bg-cyber-neon/30">
       {/* Background Atmosphere */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyber-neon/5 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyber-pink/5 blur-[120px] rounded-full" />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.2, 1],
+            opacity: [0.3, 0.5, 0.3],
+            rotate: [0, 90, 0]
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyber-neon/10 blur-[120px] rounded-full" 
+        />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.5, 1],
+            opacity: [0.2, 0.4, 0.2],
+            rotate: [0, -90, 0]
+          }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyber-pink/10 blur-[120px] rounded-full" 
+        />
       </div>
 
       <AnimatePresence mode="wait">
@@ -244,9 +291,12 @@ export default function App() {
                 {activeTab === 'hub' && <HubView key="hub" user={user!} />}
                 {activeTab === 'study' && <StudyView key="study" user={user!} />}
                 {activeTab === 'chat' && <ChatView key="chat" user={user!} socket={socketRef.current!} />}
-                {activeTab === 'market' && <MarketView key="market" user={user!} />}
+                {activeTab === 'store' && <StoreView key="store" user={user!} setUser={setUser} />}
+                {activeTab === 'tasks' && <TasksView key="tasks" user={user!} />}
+                {activeTab === 'leaderboard' && <LeaderboardView key="leaderboard" user={user!} />}
+                {activeTab === 'tickets' && <TicketsView key="tickets" user={user!} />}
                 {activeTab === 'custom' && <CustomizationView key="custom" user={user!} />}
-                {activeTab === 'profile' && <ProfileView key="profile" user={user!} setUser={setUser} onSecurity={() => setActiveTab('security')} onThemes={() => setActiveTab('custom')} />}
+                {activeTab === 'profile' && <ProfileView key="profile" user={user!} setUser={setUser} onSecurity={() => setActiveTab('security')} onThemes={() => setActiveTab('custom')} onStore={() => setActiveTab('store')} onTickets={() => setActiveTab('tickets')} />}
                 {activeTab === 'security' && <SecurityView key="security" user={user!} />}
               </AnimatePresence>
             </main>
@@ -261,10 +311,15 @@ export default function App() {
 // --- Sub-Views ---
 
 function Header({ user, setActiveTab, activeTab, onAdmin, notifications }: { user: User, setActiveTab: (t: any) => void, activeTab: string, onAdmin: () => void, notifications: Notification[] }) {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-panel !rounded-none border-x-0 border-t-0 bg-cyber-dark/80 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
+          <button className="md:hidden p-2 text-white/60 hover:text-white" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            <Menu size={24} />
+          </button>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyber-neon to-cyber-blue p-[1px]">
             <div className="w-full h-full rounded-xl bg-cyber-dark flex items-center justify-center">
               <Zap className="w-5 h-5 text-cyber-neon" />
@@ -272,13 +327,26 @@ function Header({ user, setActiveTab, activeTab, onAdmin, notifications }: { use
           </div>
           <h1 className="text-xl font-bold tracking-tighter neon-text text-white hidden sm:block">TGH CAMPUS</h1>
         </div>
+        
+        {/* Mobile Menu */}
+        {isMobileMenuOpen && (
+          <div className="absolute top-16 left-0 right-0 bg-cyber-dark border-b border-white/10 p-4 flex flex-col gap-4 md:hidden z-50">
+            <button onClick={() => {setActiveTab('hub'); setIsMobileMenuOpen(false)}} className={cn("hover:text-white transition-colors", activeTab === 'hub' && "text-cyber-neon")}>GRID</button>
+            <button onClick={() => {setActiveTab('study'); setIsMobileMenuOpen(false)}} className={cn("hover:text-white transition-colors", activeTab === 'study' && "text-cyber-neon")}>ACADEMICS</button>
+            <button onClick={() => {setActiveTab('tasks'); setIsMobileMenuOpen(false)}} className={cn("hover:text-white transition-colors", activeTab === 'tasks' && "text-cyber-neon")}>TASKS</button>
+            <button onClick={() => {setActiveTab('leaderboard'); setIsMobileMenuOpen(false)}} className={cn("hover:text-white transition-colors", activeTab === 'leaderboard' && "text-cyber-neon")}>RANK</button>
+            <button onClick={() => {setActiveTab('store'); setIsMobileMenuOpen(false)}} className={cn("hover:text-white transition-colors", activeTab === 'store' && "text-cyber-neon")}>STORE</button>
+            {user.role === 'admin' && <button onClick={() => {onAdmin(); setIsMobileMenuOpen(false)}} className="text-cyber-pink hover:text-white transition-colors">ADMIN</button>}
+          </div>
+        )}
 
         <div className="flex items-center gap-4">
           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-white/60">
             <button onClick={() => setActiveTab('hub')} className={cn("hover:text-white transition-colors", activeTab === 'hub' && "text-cyber-neon")}>GRID</button>
             <button onClick={() => setActiveTab('study')} className={cn("hover:text-white transition-colors", activeTab === 'study' && "text-cyber-neon")}>ACADEMICS</button>
-            <button onClick={() => setActiveTab('market')} className={cn("hover:text-white transition-colors", activeTab === 'market' && "text-cyber-neon")}>VAULT</button>
-            <button onClick={() => setActiveTab('custom')} className={cn("hover:text-white transition-colors", activeTab === 'custom' && "text-cyber-neon")}>THEMES</button>
+            <button onClick={() => setActiveTab('tasks')} className={cn("hover:text-white transition-colors", activeTab === 'tasks' && "text-cyber-neon")}>TASKS</button>
+            <button onClick={() => setActiveTab('leaderboard')} className={cn("hover:text-white transition-colors", activeTab === 'leaderboard' && "text-cyber-neon")}>RANK</button>
+            <button onClick={() => setActiveTab('store')} className={cn("hover:text-white transition-colors", activeTab === 'store' && "text-cyber-neon")}>STORE</button>
             {user.role === 'admin' && <button onClick={onAdmin} className="text-cyber-pink hover:text-white transition-colors">ADMIN</button>}
           </div>
           <div className="flex items-center gap-4">
@@ -334,7 +402,7 @@ function MobileNav({ activeTab, setActiveTab }: { activeTab: string, setActiveTa
         <NavButton active={activeTab === 'hub'} onClick={() => setActiveTab('hub')} icon={<LayoutGrid />} label="Grid" />
         <NavButton active={activeTab === 'study'} onClick={() => setActiveTab('study')} icon={<BookOpen />} label="Academics" />
         <NavButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={<MessageSquare />} label="Chat" />
-        <NavButton active={activeTab === 'market'} onClick={() => setActiveTab('market')} icon={<ShoppingBag />} label="Vault" />
+        <NavButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<ClipboardList />} label="Tasks" />
         <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<UserIcon />} label="Me" />
       </div>
     </nav>
@@ -551,14 +619,17 @@ function OnboardingView({ user, onComplete }: { user: User, onComplete: (u: User
 }
 
 function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
-  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'queue' | 'audit' | 'ips' | 'security' | 'academics'>('stats');
+  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'queue' | 'audit' | 'ips' | 'security' | 'academics' | 'tickets' | 'tasks' | 'redeem'>('stats');
   const [stats, setStats] = useState<any>(null);
   const [queue, setQueue] = useState<any[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [clusters, setClusters] = useState<IPCluster[]>([]);
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [adminTickets, setAdminTickets] = useState<Ticket[]>([]);
+  const [taskSubs, setTaskSubs] = useState<TaskSubmission[]>([]);
   const [lockdown, setLockdown] = useState(false);
   const [academicForm, setAcademicForm] = useState({ type: 'homework', title: '', content: '', grade: '', section: '', subject: '', due_date: '' });
+  const [redeemForm, setRedeemForm] = useState({ code: '', reward_type: 'toins', reward_value: '', max_uses: 100, hint: '', is_treasure_hunt: false });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -575,6 +646,12 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
       setClusters(iRes);
       setSecurityEvents(seRes);
       setLockdown(sRes.lockdown);
+
+      if (activeAdminTab === 'tickets') {
+        fetch('/api/admin/tickets').then(r => r.json()).then(setAdminTickets);
+      } else if (activeAdminTab === 'tasks') {
+        fetch('/api/admin/tasks/submissions').then(r => r.json()).then(setTaskSubs);
+      }
     };
     fetchData();
   }, [activeAdminTab]);
@@ -632,6 +709,9 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
         <AdminTab active={activeAdminTab === 'ips'} onClick={() => setActiveAdminTab('ips')} icon={<Fingerprint />} label="IP Clusters" count={clusters.length} />
         <AdminTab active={activeAdminTab === 'security'} onClick={() => setActiveAdminTab('security')} icon={<Shield />} label="Security" />
         <AdminTab active={activeAdminTab === 'academics'} onClick={() => setActiveAdminTab('academics')} icon={<BookOpen />} label="Academics" />
+        <AdminTab active={activeAdminTab === 'tickets'} onClick={() => setActiveAdminTab('tickets')} icon={<TicketIcon />} label="Tickets" count={adminTickets.length} />
+        <AdminTab active={activeAdminTab === 'tasks'} onClick={() => setActiveAdminTab('tasks')} icon={<ClipboardList />} label="Tasks" count={taskSubs.length} />
+        <AdminTab active={activeAdminTab === 'redeem'} onClick={() => setActiveAdminTab('redeem')} icon={<Gift />} label="Codes" />
       </div>
 
       <AnimatePresence mode="wait">
@@ -887,6 +967,160 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
             ))}
           </motion.div>
         )}
+
+        {activeAdminTab === 'tickets' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            {adminTickets.map(ticket => (
+              <GlassCard key={ticket.id} className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Avatar seed={ticket.username || ''} size="sm" />
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-wider">{ticket.category.replace('_', ' ')}</p>
+                    <p className="text-[10px] text-white/40">From: {ticket.display_name} (@{ticket.username}) • ID: {ticket.id}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <NeonButton variant="ghost" className="text-xs px-3 py-1">View Thread</NeonButton>
+                  <NeonButton variant="blue" className="text-xs px-3 py-1">Resolve</NeonButton>
+                </div>
+              </GlassCard>
+            ))}
+            {adminTickets.length === 0 && <GlassCard className="text-center py-12 opacity-40">No active tickets.</GlassCard>}
+          </motion.div>
+        )}
+
+        {activeAdminTab === 'tasks' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            {taskSubs.map(sub => (
+              <GlassCard key={sub.id} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar seed={sub.username || ''} size="sm" />
+                    <div>
+                      <p className="text-sm font-bold">{sub.display_name} submitted for "{sub.task_title}"</p>
+                      <p className="text-[10px] text-white/40">Submitted: {format(new Date(sub.submitted_at), 'MMM dd, HH:mm')}</p>
+                    </div>
+                  </div>
+                  <Badge variant="blue">PENDING VERIFICATION</Badge>
+                </div>
+                <div className="bg-white/5 p-4 rounded-xl border border-white/10 text-sm">
+                  <p className="text-white/80">{sub.proof_text}</p>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <NeonButton 
+                    onClick={async () => {
+                      await fetch('/api/admin/tasks/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ submissionId: sub.id, status: 'approved', feedback: 'Great job!' })
+                      });
+                      fetch('/api/admin/tasks/submissions').then(r => r.json()).then(setTaskSubs);
+                    }}
+                    className="bg-cyber-neon/20 text-cyber-neon border-cyber-neon/40 text-xs px-4 py-1.5"
+                  >
+                    Approve & Pay
+                  </NeonButton>
+                  <NeonButton 
+                    variant="danger" 
+                    className="text-xs px-4 py-1.5"
+                    onClick={async () => {
+                      await fetch('/api/admin/tasks/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ submissionId: sub.id, status: 'rejected', feedback: 'Insufficient proof.' })
+                      });
+                      fetch('/api/admin/tasks/submissions').then(r => r.json()).then(setTaskSubs);
+                    }}
+                  >
+                    Reject
+                  </NeonButton>
+                </div>
+              </GlassCard>
+            ))}
+            {taskSubs.length === 0 && <GlassCard className="text-center py-12 opacity-40">No pending task submissions.</GlassCard>}
+          </motion.div>
+        )}
+
+        {activeAdminTab === 'redeem' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <GlassCard className="p-6">
+              <h3 className="text-xl font-black tracking-tighter mb-6">CREATE REDEEM CODE</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Code String</label>
+                    <input 
+                      value={redeemForm.code}
+                      onChange={e => setRedeemForm({...redeemForm, code: e.target.value.toUpperCase()})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-mono text-sm outline-none" 
+                      placeholder="e.g. WELCOME_2024"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Reward Type</label>
+                      <select 
+                        value={redeemForm.reward_type}
+                        onChange={e => setRedeemForm({...redeemForm, reward_type: e.target.value as any})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none"
+                      >
+                        <option value="toins">Toins</option>
+                        <option value="item">Item ID</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Value</label>
+                      <input 
+                        value={redeemForm.reward_value}
+                        onChange={e => setRedeemForm({...redeemForm, reward_value: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" 
+                        placeholder="e.g. 500"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Max Uses</label>
+                    <input 
+                      type="number"
+                      value={redeemForm.max_uses}
+                      onChange={e => setRedeemForm({...redeemForm, max_uses: parseInt(e.target.value)})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" 
+                    />
+                  </div>
+                  <div className="flex items-center gap-4 pt-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={redeemForm.is_treasure_hunt}
+                        onChange={e => setRedeemForm({...redeemForm, is_treasure_hunt: e.target.checked})}
+                        className="w-4 h-4 rounded bg-white/5 border-white/10 text-cyber-neon"
+                      />
+                      <span className="text-xs font-bold uppercase tracking-wider">Treasure Hunt Mode</span>
+                    </label>
+                  </div>
+                  <NeonButton 
+                    className="w-full py-3 mt-2"
+                    onClick={async () => {
+                      const res = await fetch('/api/admin/redeem', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(redeemForm)
+                      });
+                      if (res.ok) {
+                        alert("Redeem code created!");
+                        setRedeemForm({ code: '', reward_type: 'toins', reward_value: '', max_uses: 100, hint: '', is_treasure_hunt: false });
+                      }
+                    }}
+                  >
+                    GENERATE CODE
+                  </NeonButton>
+                </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -932,7 +1166,7 @@ const StoriesBar = ({ user, onStoryClick, onAddStory }: { user: User, onStoryCli
   }, []);
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+    <div className="flex gap-4 overflow-x-auto no-scrollbar">
       <button 
         onClick={onAddStory}
         className="flex flex-col items-center gap-2 shrink-0"
@@ -1003,60 +1237,243 @@ const StoryViewer = ({ story, onClose }: { story: Story, onClose: () => void }) 
 
       <img src={story.media_url} className="max-w-full max-h-full object-contain" alt="Story Content" />
       
-      {story.text_overlay && (
-        <div className="absolute bottom-20 left-0 right-0 text-center px-10">
-          <p className="text-xl font-black tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">{story.text_overlay}</p>
-        </div>
-      )}
+      <div className="absolute bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-black via-black/60 to-transparent">
+        {story.title && (
+          <h2 className="text-2xl font-black tracking-tight mb-2 text-cyber-neon drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">{story.title}</h2>
+        )}
+        {story.text_overlay && (
+          <p className="text-xl font-bold tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] mb-4">{story.text_overlay}</p>
+        )}
+        {story.tags && (
+          <div className="flex flex-wrap gap-2">
+            {story.tags.split(',').map((tag, i) => (
+              <span key={i} className="px-2 py-1 bg-white/10 backdrop-blur-md rounded-lg text-xs font-mono text-white/80 border border-white/10">#{tag.trim()}</span>
+            ))}
+          </div>
+        )}
+      </div>
     </motion.div>
+  );
+};
+
+const StoryUploader = ({ onClose, onUpload }: { onClose: () => void, onUpload: (data: { media_url: string, text_overlay: string, title?: string, tags?: string }) => Promise<void> }) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [text, setText] = useState('');
+  const [title, setTitle] = useState('');
+  const [tags, setTags] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const f = e.target.files[0];
+      setFile(f);
+      const base64 = await fileToBase64(f);
+      setPreview(base64);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!preview) return;
+    setLoading(true);
+    await onUpload({ media_url: preview, text_overlay: text, title, tags });
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-cyber-dark border border-white/10 rounded-3xl overflow-hidden relative flex flex-col h-[85vh]">
+        <button onClick={onClose} className="absolute top-4 right-4 z-20 p-2 bg-black/50 rounded-full text-white"><X size={20} /></button>
+        
+        <div className="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
+          {preview ? (
+            <>
+              <img src={preview} className="w-full h-full object-contain" alt="Preview" />
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/80 to-transparent space-y-3">
+                <input 
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="Story Title (Optional)"
+                  className="w-full bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-xl border border-white/20 outline-none text-sm font-bold placeholder:text-white/40"
+                />
+                <input 
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  placeholder="Add a caption..."
+                  className="w-full bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-xl border border-white/20 outline-none text-sm placeholder:text-white/40"
+                />
+                <input 
+                  value={tags}
+                  onChange={e => setTags(e.target.value)}
+                  placeholder="Tags (comma separated)"
+                  className="w-full bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-xl border border-white/20 outline-none text-xs font-mono placeholder:text-white/40"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="text-center space-y-6 p-8">
+              <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto animate-pulse">
+                <ImageIcon className="text-white/40" size={32} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold mb-2">Create Story</h3>
+                <p className="text-white/40 text-sm mb-6">Share moments with your sector.</p>
+                <label className="inline-flex items-center gap-2 px-6 py-3 bg-cyber-neon text-cyber-dark font-bold rounded-xl cursor-pointer hover:bg-cyber-neon/80 transition-colors">
+                  <Camera size={20} />
+                  <span>Choose Media</span>
+                  <input type="file" accept="image/*,video/*" onChange={handleFileChange} className="hidden" />
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {preview && (
+          <div className="p-4 border-t border-white/10 bg-cyber-dark">
+            <NeonButton onClick={handleUpload} disabled={loading} className="w-full py-4 text-lg">
+              {loading ? 'Uploading...' : 'Share to Story'}
+            </NeonButton>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
 // --- App Views (Gated) ---
 
-const PostCard = ({ post, onLike }: { post: any, onLike: () => void }) => (
-  <GlassCard className="space-y-4">
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <Avatar seed={post.username} src={post.avatar} size="sm" />
-        <div>
-          <p className="text-sm font-bold">{post.display_name}</p>
-          <p className="text-[10px] text-white/40 font-mono">@{post.username} • {formatDistanceToNow(new Date(post.timestamp))} ago</p>
-        </div>
-      </div>
-      <button className="p-2 text-white/20 hover:text-white transition-colors"><MoreHorizontal size={18} /></button>
-    </div>
-    
-    <div className="space-y-3">
-      <p className="text-sm text-white/80 leading-relaxed">{post.content}</p>
-      {post.media_url && (
-        <div className="rounded-2xl overflow-hidden border border-white/10">
-          <img src={post.media_url} className="w-full h-auto" alt="Post media" />
-        </div>
-      )}
-    </div>
+const PostCard = ({ post, onLike }: { post: any, onLike: () => void }) => {
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
 
-    <div className="flex items-center gap-6 pt-2">
-      <button onClick={onLike} className="flex items-center gap-2 text-white/40 hover:text-cyber-pink transition-colors group">
-        <Heart size={18} className="group-hover:fill-cyber-pink" />
-        <span className="text-xs font-bold">{Math.floor(post.engagement_score * 10)}</span>
-      </button>
-      <button className="flex items-center gap-2 text-white/40 hover:text-cyber-blue transition-colors">
-        <MessageCircle size={18} />
-        <span className="text-xs font-bold">Reply</span>
-      </button>
-      <button className="flex items-center gap-2 text-white/40 hover:text-cyber-neon transition-colors ml-auto">
-        <Share2 size={18} />
-      </button>
-    </div>
-  </GlassCard>
-);
+  const fetchComments = async () => {
+    const res = await fetch(`/api/posts/${post.id}/comments`);
+    if (res.ok) {
+      setComments(await res.json());
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+    const res = await fetch(`/api/posts/${post.id}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: newComment })
+    });
+    if (res.ok) {
+      setNewComment('');
+      fetchComments();
+    }
+  };
+
+  useEffect(() => {
+    if (showComments) fetchComments();
+  }, [showComments]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <GlassCard className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Avatar seed={post.author_username || post.username || 'anon'} src={post.author_avatar || post.avatar} size="sm" />
+            <div>
+              <p className="text-sm font-bold">{post.author || post.display_name || 'Unknown'}</p>
+              <p className="text-[10px] text-white/40 font-mono">@{post.author_username || post.username} • {formatDistanceToNow(new Date(post.timestamp))} ago</p>
+            </div>
+          </div>
+          <button className="p-2 text-white/20 hover:text-white transition-colors"><MoreHorizontal size={18} /></button>
+        </div>
+        
+        <div className="space-y-3">
+          {post.title && <h3 className="text-lg font-bold tracking-tight">{post.title}</h3>}
+          
+          <div className="text-sm text-white/80 leading-relaxed markdown-body">
+            <ReactMarkdown>{post.content}</ReactMarkdown>
+          </div>
+          
+          {post.media_url && (
+            <div className="rounded-2xl overflow-hidden border border-white/10">
+              <img src={post.media_url} className="w-full h-auto" alt="Post media" />
+            </div>
+          )}
+
+          {post.voice_url && (
+            <div className="mt-2 bg-white/5 p-3 rounded-xl border border-white/10 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-cyber-neon/20 flex items-center justify-center text-cyber-neon">
+                <Mic size={20} />
+              </div>
+              <audio controls src={post.voice_url} className="w-full h-8" />
+            </div>
+          )}
+
+          {post.tags && (
+            <div className="flex flex-wrap gap-2 pt-2">
+              {post.tags.split(',').map((tag: string, i: number) => (
+                <span key={i} className="text-xs text-cyber-blue hover:underline cursor-pointer">#{tag.trim()}</span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-6 pt-2">
+          <button onClick={onLike} className="flex items-center gap-2 text-white/40 hover:text-cyber-pink transition-colors group">
+            <Heart size={18} className="group-hover:fill-cyber-pink" />
+            <span className="text-xs font-bold">{Math.floor(post.engagement_score * 10)}</span>
+          </button>
+          <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 text-white/40 hover:text-cyber-blue transition-colors">
+            <MessageCircle size={18} />
+            <span className="text-xs font-bold">Reply</span>
+          </button>
+          <button className="flex items-center gap-2 text-white/40 hover:text-cyber-neon transition-colors ml-auto">
+            <Share2 size={18} />
+          </button>
+        </div>
+
+        {showComments && (
+          <div className="pt-4 border-t border-white/10 space-y-4">
+            <div className="space-y-2">
+              {comments.map(c => (
+                <div key={c.id} className="flex gap-2 text-xs">
+                  <Avatar seed={c.username} src={c.avatar} size="sm" />
+                  <div className="bg-white/5 p-2 rounded-xl flex-1">
+                    <p className="font-bold">{c.username}</p>
+                    <p>{c.content}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input 
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+                placeholder="Write a reply..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+              />
+              <NeonButton onClick={handleAddComment} className="text-xs px-4">Post</NeonButton>
+            </div>
+          </div>
+        )}
+      </GlassCard>
+    </motion.div>
+  );
+};
 
 function HubView({ user }: { user: User }) {
   const [posts, setPosts] = useState<any[]>([]);
   const [activeStory, setActiveStory] = useState<Story | null>(null);
   const [isPosting, setIsPosting] = useState(false);
   const [postContent, setPostContent] = useState('');
+  const [postMedia, setPostMedia] = useState<string | null>(null);
+  const [showStoryUploader, setShowStoryUploader] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [postVoice, setPostVoice] = useState<Blob | null>(null);
 
   useEffect(() => {
     fetch('/api/posts').then(r => r.json()).then(setPosts);
@@ -1070,18 +1487,60 @@ function HubView({ user }: { user: User }) {
   };
 
   const handleCreatePost = async () => {
-    if (!postContent.trim()) return;
+    if (!postContent.trim() && !postMedia && !postVoice) return;
+    setIsPosting(true);
+    
+    // Upload voice if exists
+    let voiceUrl = null;
+    if (postVoice) {
+      const formData = new FormData();
+      formData.append('file', postVoice, 'voice_post.webm');
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (uploadRes.ok) {
+        const { url } = await uploadRes.json();
+        voiceUrl = url;
+      }
+    }
+
     const res = await fetch('/api/posts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: postContent, type: 'public' })
+      body: JSON.stringify({ 
+        content: postContent, 
+        type: 'public', 
+        media_url: postMedia,
+        voice_url: voiceUrl
+      })
+    });
+
+    if (res.ok) {
+      setPostContent('');
+      setPostMedia(null);
+      setPostVoice(null);
+      setShowVoiceRecorder(false);
+      setIsPosting(false);
+      fetch('/api/posts').then(r => r.json()).then(setPosts);
+    }
+  };
+
+  const handleStoryUpload = async (data: { media_url: string, text_overlay: string, title?: string, tags?: string }) => {
+    const res = await fetch('/api/stories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
     });
     if (res.ok) {
-      const data = await res.json();
-      setPostContent('');
-      setIsPosting(false);
-      // Refresh feed
-      fetch('/api/posts').then(r => r.json()).then(setPosts);
+      setShowStoryUploader(false);
+      // Ideally refresh stories here, but StoriesBar fetches on mount. 
+      // For now, user can refresh or we can lift state.
+      window.location.reload(); // Simple refresh to show new story
+    }
+  };
+
+  const handlePostMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const base64 = await fileToBase64(e.target.files[0]);
+      setPostMedia(base64);
     }
   };
 
@@ -1089,34 +1548,68 @@ function HubView({ user }: { user: User }) {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <AnimatePresence>
         {activeStory && <StoryViewer story={activeStory} onClose={() => setActiveStory(null)} />}
+        {showStoryUploader && <StoryUploader onClose={() => setShowStoryUploader(false)} onUpload={handleStoryUpload} />}
+        {showChat && (
+          <Chat 
+            user={user} 
+            onClose={() => setShowChat(false)} 
+            onViewProfile={(userId) => {
+              setShowChat(false);
+              // Assuming there's a function to view profile, but I don't see it in scope here.
+              // I'll need to check if handleViewProfile is available or if I need to pass it down.
+              // Looking at the code, I don't see handleViewProfile in HubView props or scope.
+              // I might need to add it to HubView props or implement it.
+            }}
+          />
+        )}
       </AnimatePresence>
 
-      <StoriesBar 
-        user={user} 
-        onStoryClick={setActiveStory} 
-        onAddStory={() => {}} 
-      />
-
-      <section className="relative overflow-hidden rounded-3xl h-48 sm:h-64 flex items-end p-6 sm:p-10">
+      <motion.section 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="relative overflow-hidden rounded-3xl flex flex-col p-6 sm:p-10"
+      >
         <img src="https://picsum.photos/seed/cyber/1200/600" className="absolute inset-0 w-full h-full object-cover opacity-40" alt="Banner" />
-        <div className="absolute inset-0 bg-gradient-to-t from-cyber-dark via-cyber-dark/20 to-transparent" />
-        <div className="relative z-10 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tighter">WELCOME BACK, <span className="text-cyber-neon">{user.display_name.toUpperCase()}</span></h2>
-            <p className="text-white/60 font-mono text-sm">SECTOR: {user.grade.toUpperCase()} // STATUS: {user.verification_status.toUpperCase()}</p>
+        <div className="absolute inset-0 bg-gradient-to-t from-cyber-dark via-cyber-dark/60 to-transparent" />
+        
+        <div className="relative z-10 w-full mb-8 sm:mb-16 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
+            <StoriesBar 
+              user={user} 
+              onStoryClick={setActiveStory} 
+              onAddStory={() => setShowStoryUploader(true)} 
+            />
           </div>
-          <div className="flex gap-2">
+          <button 
+            onClick={() => setShowChat(true)}
+            className="hidden sm:flex p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full border border-white/20 transition-colors relative group shrink-0"
+          >
+            <MessageCircle size={24} className="text-cyber-neon" />
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+            <span className="absolute top-full right-0 mt-2 px-2 py-1 bg-black/80 text-[10px] text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              Messages
+            </span>
+          </button>
+        </div>
+
+        <div className="relative z-10 w-full flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2 }}>
+            <h2 className="text-2xl sm:text-4xl font-black tracking-tighter leading-tight mb-1">WELCOME BACK,<br className="sm:hidden" /> <span className="text-cyber-neon">{user.display_name?.toUpperCase() || 'STUDENT'}</span></h2>
+            <p className="text-white/60 font-mono text-xs sm:text-sm">SECTOR: {user.grade?.toUpperCase() || 'N/A'} // STATUS: {user.verification_status?.toUpperCase() || 'N/A'}</p>
+          </motion.div>
+          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="flex gap-2 shrink-0">
             <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
               <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Level</p>
               <p className="text-xl font-black font-mono">{user.level}</p>
             </div>
             <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
               <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Rank</p>
-              <p className="text-xl font-black font-mono text-cyber-blue">{user.role.toUpperCase()}</p>
+              <p className="text-xl font-black font-mono text-cyber-blue">{user.role?.toUpperCase() || 'USER'}</p>
             </div>
-          </div>
+          </motion.div>
         </div>
-      </section>
+      </motion.section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -1124,20 +1617,41 @@ function HubView({ user }: { user: User }) {
             <GlassCard className="space-y-4">
               <div className="flex gap-4">
                 <Avatar seed={user.username} src={user.avatar} size="md" />
-                <textarea 
-                  value={postContent}
-                  onChange={(e) => setPostContent(e.target.value)}
-                  placeholder="What's happening in the grid?"
-                  className="flex-1 bg-transparent border-none outline-none resize-none text-sm py-2"
-                  rows={2}
-                />
+                <div className="flex-1 space-y-2">
+                  <textarea 
+                    value={postContent}
+                    onChange={(e) => setPostContent(e.target.value)}
+                    placeholder="What's happening in the grid?"
+                    className="w-full bg-transparent border-none outline-none resize-none text-sm py-2"
+                    rows={2}
+                  />
+                  {postMedia && (
+                    <div className="relative rounded-xl overflow-hidden border border-white/10">
+                      <img src={postMedia} className="w-full h-48 object-cover" alt="Selected" />
+                      <button onClick={() => setPostMedia(null)} className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white"><X size={16} /></button>
+                    </div>
+                  )}
+                  {showVoiceRecorder && (
+                    <div className="mt-2">
+                      <VoiceRecorder onRecordingComplete={setPostVoice} />
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-white/5">
                 <div className="flex gap-2">
-                  <button className="p-2 text-white/40 hover:text-cyber-neon transition-colors"><ImageIcon size={20} /></button>
-                  <button className="p-2 text-white/40 hover:text-cyber-neon transition-colors"><Mic size={20} /></button>
+                  <label className="p-2 text-white/40 hover:text-cyber-neon transition-colors cursor-pointer">
+                    <ImageIcon size={20} />
+                    <input type="file" accept="image/*" onChange={handlePostMediaSelect} className="hidden" />
+                  </label>
+                  <button 
+                    onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
+                    className={`p-2 transition-colors ${showVoiceRecorder ? 'text-cyber-neon bg-cyber-neon/10 rounded-lg' : 'text-white/40 hover:text-cyber-neon'}`}
+                  >
+                    <Mic size={20} />
+                  </button>
                 </div>
-                <NeonButton onClick={handleCreatePost} disabled={!postContent.trim()} className="text-xs py-1.5 px-4">Broadcast</NeonButton>
+                <NeonButton onClick={handleCreatePost} disabled={!postContent.trim() && !postMedia && !postVoice} className="text-xs py-1.5 px-4">Broadcast</NeonButton>
               </div>
             </GlassCard>
           </GatedFeature>
@@ -1149,7 +1663,12 @@ function HubView({ user }: { user: User }) {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="space-y-6"
+        >
           <GlassCard className="bg-cyber-neon/5 border-cyber-neon/20">
             <h3 className="text-sm font-bold uppercase tracking-widest text-cyber-neon mb-4">Daily Bounty</h3>
             <div className="space-y-3">
@@ -1158,7 +1677,12 @@ function HubView({ user }: { user: User }) {
                 <span className="text-cyber-neon font-mono">+50XP</span>
               </div>
               <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                <div className="w-[60%] h-full bg-cyber-neon shadow-[0_0_10px_#00FF00]" />
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: '60%' }}
+                  transition={{ duration: 1, delay: 0.5 }}
+                  className="h-full bg-cyber-neon shadow-[0_0_10px_#00FF00]" 
+                />
               </div>
               <p className="text-[10px] text-white/40 text-right">60% Complete</p>
             </div>
@@ -1175,7 +1699,7 @@ function HubView({ user }: { user: User }) {
               ))}
             </div>
           </GlassCard>
-        </div>
+        </motion.div>
       </div>
     </motion.div>
   );
@@ -1188,6 +1712,7 @@ function StudyView({ user }: { user: User }) {
   const [isTyping, setIsTyping] = useState(false);
   const [materials, setMaterials] = useState<AcademicMaterial[]>([]);
   const [queries, setQueries] = useState<DiscussionQuery[]>([]);
+  const [siteStats, setSiteStats] = useState<any>(null);
   const [timer, setTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1196,6 +1721,12 @@ function StudyView({ user }: { user: User }) {
     // Fetch materials and queries initially for AI context
     fetch(`/api/academic/materials?grade=${user.grade}&section=${user.section}`).then(r => r.json()).then(setMaterials);
     fetch('/api/academic/queries').then(r => r.json()).then(setQueries);
+    fetch('/api/site/context').then(r => r.json()).then(setSiteStats);
+    fetch('/api/ai/history').then(r => r.json()).then(data => {
+      if (data && data.length > 0) {
+        setMessages(data.map((m: any) => ({ role: m.role, content: m.content })));
+      }
+    });
   }, [user.grade, user.section]);
 
   useEffect(() => {
@@ -1225,14 +1756,24 @@ function StudyView({ user }: { user: User }) {
     const userMsg = input;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'user', content: userMsg })
+    });
     setIsTyping(true);
     try {
       const history = messages.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
       }));
-      const response = await getStudyBuddyResponse(userMsg, history, { materials, queries });
+      const response = await getStudyBuddyResponse(userMsg, history, { materials, queries, user, siteStats });
       setMessages(prev => [...prev, { role: 'ai', content: response }]);
+      fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'ai', content: response })
+      });
     } catch (e) { 
       console.error(e);
       setMessages(prev => [...prev, { role: 'ai', content: "ERROR: GRID CONNECTION UNSTABLE. PLEASE TRY AGAIN." }]); 
@@ -1251,16 +1792,16 @@ function StudyView({ user }: { user: User }) {
 
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="h-[calc(100vh-12rem)] flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
           <h2 className="text-2xl font-black tracking-tighter flex items-center gap-2"><Sparkles className="text-cyber-neon" /> ACADEMICS</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
             {['ai', 'materials', 'discussion', 'tools'].map((t: any) => (
               <button 
                 key={t}
                 onClick={() => setStudyTab(t)}
                 className={cn(
-                  "px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
+                  "px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap",
                   studyTab === t ? "bg-cyber-neon text-cyber-dark" : "bg-white/5 text-white/40 hover:bg-white/10"
                 )}
               >
@@ -1274,11 +1815,14 @@ function StudyView({ user }: { user: User }) {
       <GlassCard className="flex-1 flex flex-col p-0 overflow-hidden">
         <AnimatePresence mode="wait">
           {studyTab === 'ai' && (
-            <motion.div key="ai" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden">
-              <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6">
+            <motion.div key="ai" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden relative">
+              <div className="absolute inset-0 bg-[url('https://picsum.photos/seed/ai-core/1920/1080')] bg-cover bg-center opacity-10 pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-b from-cyber-dark/80 via-transparent to-cyber-dark/80 pointer-events-none" />
+              
+              <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 relative z-10">
                 {messages.map((msg, i) => (
                   <div key={i} className={cn("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}>
-                    <div className={cn("max-w-[85%] p-4 rounded-2xl", msg.role === 'user' ? "bg-cyber-neon/10 border border-cyber-neon/20" : "bg-white/5 border border-white/10")}>
+                    <div className={cn("max-w-[85%] p-4 rounded-2xl backdrop-blur-md shadow-lg", msg.role === 'user' ? "bg-cyber-neon/20 border border-cyber-neon/30 text-white" : "bg-white/10 border border-white/20 text-white")}>
                       <div className="prose prose-invert prose-sm max-w-none"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
                     </div>
                   </div>
@@ -1286,10 +1830,10 @@ function StudyView({ user }: { user: User }) {
                 {isTyping && <div className="flex gap-1 p-4"><div className="w-1.5 h-1.5 bg-cyber-neon rounded-full animate-pulse" /><div className="w-1.5 h-1.5 bg-cyber-neon rounded-full animate-pulse delay-75" /><div className="w-1.5 h-1.5 bg-cyber-neon rounded-full animate-pulse delay-150" /></div>}
               </div>
               <GatedFeature status={user.verification_status}>
-                <div className="p-4 border-t border-white/10 bg-white/5">
+                <div className="p-4 border-t border-white/10 bg-white/5 relative z-10 backdrop-blur-md">
                   <div className="flex items-center gap-2">
-                    <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="Ask StudyBuddy AI..." className="flex-1 bg-cyber-dark/50 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" />
-                    <button onClick={handleSend} className="p-3 bg-cyber-neon text-cyber-dark rounded-xl"><Send size={20} /></button>
+                    <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="Ask StudyBuddy AI..." className="flex-1 bg-cyber-dark/50 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-cyber-neon/50 transition-colors" />
+                    <button onClick={handleSend} className="p-3 bg-cyber-neon text-cyber-dark rounded-xl hover:bg-cyber-neon/80 transition-colors"><Send size={20} /></button>
                   </div>
                 </div>
               </GatedFeature>
@@ -1346,10 +1890,10 @@ function StudyView({ user }: { user: User }) {
                   handleCreateQuery(form.query.value, form.subject.value);
                   form.reset();
                 }} className="space-y-3">
-                  <div className="flex gap-2">
-                    <input name="subject" placeholder="Subject (e.g. Physics)" className="w-1/3 bg-cyber-dark/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none" required />
-                    <input name="query" placeholder="Ask a question to the campus..." className="flex-1 bg-cyber-dark/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none" required />
-                    <button type="submit" className="px-4 bg-cyber-blue text-white rounded-xl text-xs font-bold uppercase">Post</button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input name="subject" placeholder="Subject (e.g. Physics)" className="w-full sm:w-1/3 bg-cyber-dark/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none focus:border-cyber-neon/50" required />
+                    <input name="query" placeholder="Ask a question to the campus..." className="flex-1 bg-cyber-dark/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none focus:border-cyber-neon/50" required />
+                    <button type="submit" className="px-4 py-2 sm:py-0 bg-cyber-blue text-white rounded-xl text-xs font-bold uppercase hover:bg-cyber-blue/80 transition-colors">Post</button>
                   </div>
                 </form>
               </div>
@@ -1391,10 +1935,25 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [newChatUsername, setNewChatUsername] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/conversations').then(r => r.json()).then(setConversations);
+    fetch('/api/conversations')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setConversations(data);
+        } else {
+          console.error("Failed to fetch conversations:", data);
+          setConversations([]);
+        }
+      })
+      .catch(err => {
+        console.error("Error fetching conversations:", err);
+        setConversations([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -1409,9 +1968,9 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
       if (activeConv && msg.conversation_id === activeConv.id) {
         setMessages(prev => [...prev, msg]);
       }
-      setConversations(prev => prev.map(c => 
+      setConversations(prev => Array.isArray(prev) ? prev.map(c => 
         c.id === msg.conversation_id ? { ...c, last_message: msg.content, last_message_at: msg.created_at } : c
-      ));
+      ) : []);
     };
 
     const handleTyping = ({ userId, isTyping }: any) => {
@@ -1443,16 +2002,61 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
     socket.emit("typing", { conversationId: activeConv.id, isTyping: false });
   };
 
+  const handleCreateChat = async () => {
+    if (!newChatUsername.trim()) return;
+    
+    // First, search for the user
+    const searchRes = await fetch(`/api/users/search?q=${encodeURIComponent(newChatUsername)}`);
+    if (!searchRes.ok) {
+      alert("Error searching for user.");
+      return;
+    }
+    const users = await searchRes.json();
+    const targetUser = users.find((u: any) => u.username.toLowerCase() === newChatUsername.toLowerCase());
+    
+    if (!targetUser) {
+      alert("User not found.");
+      return;
+    }
+
+    // Create conversation
+    const res = await fetch('/api/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'private', participantIds: [targetUser.id] })
+    });
+    
+    if (res.ok) {
+      const { id } = await res.json();
+      
+      // Fetch the updated conversations list to get the full conversation object
+      const convRes = await fetch('/api/conversations');
+      if (convRes.ok) {
+        const convs = await convRes.json();
+        if (Array.isArray(convs)) {
+          setConversations(convs);
+          const newConv = convs.find((c: Conversation) => c.id === id);
+          if (newConv) setActiveConv(newConv);
+        }
+      }
+      
+      setIsCreatingChat(false);
+      setNewChatUsername('');
+    } else {
+      alert("Error creating chat.");
+    }
+  };
+
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="h-[calc(100vh-12rem)] flex bg-cyber-dark/40 rounded-3xl border border-white/10 overflow-hidden backdrop-blur-xl">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="h-[calc(100vh-12rem)] flex bg-cyber-dark/40 rounded-3xl border border-white/10 overflow-hidden backdrop-blur-xl relative">
       {/* Sidebar - WhatsApp/Insta Style */}
-      <div className="w-80 flex flex-col border-r border-white/10 bg-white/5">
+      <div className={cn("w-full md:w-80 flex flex-col border-r border-white/10 bg-white/5 absolute md:relative inset-0 z-20 transition-transform duration-300", activeConv ? "-translate-x-full md:translate-x-0" : "translate-x-0")}>
         <div className="p-6 border-b border-white/10 flex items-center justify-between">
           <h3 className="text-xl font-black tracking-tighter">CHATS</h3>
-          <button className="p-2 bg-cyber-neon/10 text-cyber-neon rounded-full hover:bg-cyber-neon/20 transition-all"><Plus size={18} /></button>
+          <button onClick={() => setIsCreatingChat(true)} className="p-2 bg-cyber-neon/10 text-cyber-neon rounded-full hover:bg-cyber-neon/20 transition-all"><Plus size={18} /></button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {conversations.map(conv => (
+          {Array.isArray(conversations) && conversations.map(conv => (
             <button 
               key={conv.id}
               onClick={() => setActiveConv(conv)}
@@ -1479,12 +2083,40 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
         </div>
       </div>
 
+      {isCreatingChat && (
+        <div className="fixed inset-0 z-50 bg-cyber-dark/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+            <GlassCard className="p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black tracking-tighter">NEW TRANSMISSION</h3>
+                <button onClick={() => setIsCreatingChat(false)}><X size={20} /></button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Recipient Username</label>
+                  <input 
+                    value={newChatUsername} 
+                    onChange={e => setNewChatUsername(e.target.value)} 
+                    placeholder="Enter exact username..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none focus:border-cyber-neon/50" 
+                  />
+                </div>
+                <NeonButton onClick={handleCreateChat} className="w-full py-3">Establish Connection</NeonButton>
+              </div>
+            </GlassCard>
+          </motion.div>
+        </div>
+      )}
+
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col relative">
+      <div className={cn("flex-1 flex flex-col relative w-full h-full absolute md:relative inset-0 z-10 transition-transform duration-300", activeConv ? "translate-x-0" : "translate-x-full md:translate-x-0")}>
         {activeConv ? (
           <>
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5 backdrop-blur-md z-10">
               <div className="flex items-center gap-4">
+                <button onClick={() => setActiveConv(null)} className="md:hidden p-2 -ml-2 text-white/60 hover:text-white">
+                  <ChevronRight className="rotate-180" size={24} />
+                </button>
                 <Avatar seed={activeConv.name || activeConv.id} size="sm" />
                 <div>
                   <h3 className="font-bold text-sm">{activeConv.name || "Private Frequency"}</h3>
@@ -1497,32 +2129,45 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
               </div>
             </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
-              {messages.map((msg, i) => {
-                const isMe = msg.sender_id === user.id;
-                return (
-                  <div key={msg.id} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
-                    <div className={cn(
-                      "max-w-[75%] p-3 px-4 rounded-2xl text-sm shadow-lg",
-                      isMe ? "bg-cyber-neon text-cyber-dark rounded-tr-none" : "bg-white/10 border border-white/10 text-white rounded-tl-none"
-                    )}>
-                      {msg.content}
-                      <p className={cn("text-[9px] mt-1 text-right", isMe ? "text-cyber-dark/60" : "text-white/40")}>
-                        {format(new Date(msg.created_at), 'HH:mm')}
-                      </p>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 relative">
+              <div className="absolute inset-0 bg-[url('https://picsum.photos/seed/cyberpunk/1920/1080')] bg-cover bg-center opacity-10 pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-b from-cyber-dark/80 via-transparent to-cyber-dark/80 pointer-events-none" />
+              
+              <div className="relative z-10 space-y-4">
+                {messages.map((msg, i) => {
+                  const isMe = msg.sender_id === user.id;
+                  return (
+                    <div key={msg.id} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
+                      <div className={cn(
+                        "max-w-[75%] p-3 px-4 rounded-2xl text-sm shadow-lg backdrop-blur-md relative group",
+                        isMe ? "bg-cyber-neon/90 text-cyber-dark rounded-tr-none" : "bg-white/10 border border-white/20 text-white rounded-tl-none"
+                      )}>
+                        {msg.content}
+                        <div className={cn("flex items-center justify-end gap-1 mt-1", isMe ? "text-cyber-dark/60" : "text-white/40")}>
+                          <p className="text-[9px]">
+                            {format(new Date(msg.created_at), 'HH:mm')}
+                          </p>
+                          {isMe && (
+                            <CheckCheck size={12} className="text-cyber-dark/80" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {typingUser && (
+                  <div className="flex justify-start">
+                    <div className="bg-white/10 border border-white/20 text-white rounded-2xl rounded-tl-none p-3 px-4 shadow-lg backdrop-blur-md flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 bg-cyber-neon rounded-full animate-bounce" />
+                        <div className="w-1.5 h-1.5 bg-cyber-neon rounded-full animate-bounce delay-75" />
+                        <div className="w-1.5 h-1.5 bg-cyber-neon rounded-full animate-bounce delay-150" />
+                      </div>
+                      <span className="text-[10px] text-white/60 font-mono uppercase tracking-widest ml-1">Typing...</span>
                     </div>
                   </div>
-                );
-              })}
-              {typingUser && (
-                <div className="flex items-center gap-2 text-[10px] text-cyber-neon font-mono">
-                  <div className="flex gap-1">
-                    <div className="w-1 h-1 bg-cyber-neon rounded-full animate-bounce" />
-                    <div className="w-1 h-1 bg-cyber-neon rounded-full animate-bounce delay-75" />
-                    <div className="w-1 h-1 bg-cyber-neon rounded-full animate-bounce delay-150" />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div className="p-4 bg-white/5 border-t border-white/10">
@@ -1565,7 +2210,7 @@ function MarketView({ user }: { user: User }) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [category, setCategory] = useState('all');
   const [isCreating, setIsCreating] = useState(false);
-  const [newListing, setNewListing] = useState({ title: '', description: '', price: 0, category: 'academic' });
+  const [newListing, setNewListing] = useState({ title: '', description: '', price: 0, category: 'academic', image_url: '' });
 
   useEffect(() => {
     fetch('/api/marketplace/listings').then(r => r.json()).then(setListings);
@@ -1583,6 +2228,13 @@ function MarketView({ user }: { user: User }) {
     }
   };
 
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const base64 = await fileToBase64(e.target.files[0]);
+      setNewListing(prev => ({ ...prev, image_url: base64 }));
+    }
+  };
+
   const filtered = category === 'all' ? listings : listings.filter(l => l.category === category);
 
   return (
@@ -1592,20 +2244,22 @@ function MarketView({ user }: { user: User }) {
           <h2 className="text-3xl font-black tracking-tighter">THE CAMPUS VAULT</h2>
           <p className="text-sm text-white/40 font-mono uppercase tracking-widest">Peer-to-Peer Grid Exchange</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-cyber-neon/10 border border-cyber-neon/20 px-6 py-3 rounded-2xl flex items-center gap-3">
-            <Coins className="w-6 h-6 text-cyber-neon" />
-            <div>
-              <p className="text-[10px] uppercase font-bold text-cyber-neon">Balance</p>
-              <p className="text-xl font-black font-mono">{user.toins} TOINS</p>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          <div className="bg-cyber-neon/10 border border-cyber-neon/20 px-6 py-3 rounded-2xl flex items-center justify-between sm:justify-start gap-4">
+            <div className="flex items-center gap-3">
+              <Coins className="w-6 h-6 text-cyber-neon" />
+              <div>
+                <p className="text-[10px] uppercase font-bold text-cyber-neon">Balance</p>
+                <p className="text-xl font-black font-mono">{user.toins} TOINS</p>
+              </div>
             </div>
           </div>
-          <NeonButton onClick={() => setIsCreating(true)}><Plus size={18} /> List Item</NeonButton>
+          <NeonButton onClick={() => setIsCreating(true)} className="w-full sm:w-auto"><Plus size={18} /> List Item</NeonButton>
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        {['all', 'academic', 'electronics', 'services', 'other'].map(cat => (
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        {['all', 'academic', 'electronics', 'digital', 'codes', 'services', 'other'].map(cat => (
           <button 
             key={cat}
             onClick={() => setCategory(cat)}
@@ -1623,7 +2277,7 @@ function MarketView({ user }: { user: User }) {
         {filtered.map(item => (
           <GlassCard key={item.id} className="flex flex-col gap-4 group hover:border-cyber-neon/30 transition-all">
             <div className="aspect-square rounded-2xl bg-white/5 border border-white/10 overflow-hidden relative">
-              <img src={`https://picsum.photos/seed/${item.id}/400/400`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt={item.title} />
+              <img src={item.image_url || `https://picsum.photos/seed/${item.id}/400/400`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt={item.title} />
               <div className="absolute top-3 right-3">
                 <Badge variant={item.category === 'academic' ? 'blue' : 'neon'}>{item.category}</Badge>
               </div>
@@ -1653,6 +2307,24 @@ function MarketView({ user }: { user: User }) {
               </div>
               <div className="space-y-4">
                 <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Image</label>
+                  <div className="flex items-center gap-4">
+                    {newListing.image_url ? (
+                      <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-white/10">
+                        <img src={newListing.image_url} className="w-full h-full object-cover" alt="Preview" />
+                        <button onClick={() => setNewListing({...newListing, image_url: ''})} className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white"><X size={12} /></button>
+                      </div>
+                    ) : (
+                      <label className="w-20 h-20 rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center cursor-pointer hover:border-cyber-neon/50 transition-colors bg-white/5">
+                        <Camera size={20} className="text-white/40 mb-1" />
+                        <span className="text-[8px] uppercase font-bold text-white/40">Upload</span>
+                        <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+                      </label>
+                    )}
+                    <p className="text-[10px] text-white/40 flex-1">Upload an image of your item, code snippet, or service offering.</p>
+                  </div>
+                </div>
+                <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Title</label>
                   <input value={newListing.title} onChange={e => setNewListing({...newListing, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none focus:border-cyber-neon/50" />
                 </div>
@@ -1670,6 +2342,8 @@ function MarketView({ user }: { user: User }) {
                     <select value={newListing.category} onChange={e => setNewListing({...newListing, category: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none focus:border-cyber-neon/50">
                       <option value="academic">Academic</option>
                       <option value="electronics">Electronics</option>
+                      <option value="digital">Digital Assets</option>
+                      <option value="codes">Codes/Scripts</option>
                       <option value="services">Services</option>
                       <option value="other">Other</option>
                     </select>
@@ -1685,8 +2359,122 @@ function MarketView({ user }: { user: User }) {
   );
 }
 
-function ProfileView({ user, setUser, onSecurity, onThemes }: { user: User, setUser: (u: User) => void, onSecurity: () => void, onThemes: () => void }) {
+const EditProfileModal = ({ user, onClose, onUpdate }: { user: User, onClose: () => void, onUpdate: (u: User) => void }) => {
+  const [avatar, setAvatar] = useState(user.avatar || '');
+  const [cover, setCover] = useState(user.cover || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar, cover })
+      });
+      if (res.ok) {
+        onUpdate({ ...user, avatar, cover });
+        onClose();
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to update profile");
+      }
+    } catch (e) {
+      setError("Connection failed");
+    }
+    setLoading(false);
+  };
+
+  const handleUnlock = async (type: 'pfp' | 'banner') => {
+    setLoading(true);
+    const res = await fetch('/api/users/unlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // Optimistically update user state with unlock status
+      onUpdate({ ...user, toins: data.toins, [type === 'pfp' ? 'unlock_custom_pfp' : 'unlock_custom_banner']: true });
+    } else {
+      const data = await res.json();
+      setError(data.error || "Unlock failed");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="w-full max-w-lg">
+        <GlassCard className="space-y-6 relative">
+          <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white"><X size={20} /></button>
+          <h3 className="text-xl font-black tracking-tighter">EDIT PROFILE</h3>
+          
+          {error && <div className="p-3 bg-red-500/10 text-red-500 text-xs font-bold rounded-xl">{error}</div>}
+
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase text-white/40">Avatar URL</label>
+                {!user.unlock_custom_pfp && (
+                  <button onClick={() => handleUnlock('pfp')} disabled={loading} className="text-[10px] font-bold text-cyber-neon flex items-center gap-1 hover:underline bg-cyber-neon/10 px-2 py-1 rounded">
+                    <Lock size={10} /> UNLOCK (2000 T)
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-4">
+                <div className="w-16 h-16 rounded-xl bg-white/5 overflow-hidden border border-white/10 shrink-0 relative">
+                  <img src={avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} className="w-full h-full object-cover" />
+                  {!user.unlock_custom_pfp && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><Lock size={16} className="text-white/40" /></div>}
+                </div>
+                <input 
+                  value={avatar} 
+                  onChange={e => setAvatar(e.target.value)} 
+                  disabled={!user.unlock_custom_pfp}
+                  placeholder={user.unlock_custom_pfp ? "https://..." : "Unlock to customize"}
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed focus:border-cyber-neon/50" 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase text-white/40">Cover URL</label>
+                {!user.unlock_custom_banner && (
+                  <button onClick={() => handleUnlock('banner')} disabled={loading} className="text-[10px] font-bold text-cyber-neon flex items-center gap-1 hover:underline bg-cyber-neon/10 px-2 py-1 rounded">
+                    <Lock size={10} /> UNLOCK (1500 T)
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-4">
+                <div className="w-24 h-12 rounded-xl bg-white/5 overflow-hidden border border-white/10 shrink-0 relative">
+                  <img src={cover || "https://picsum.photos/seed/profile/1200/400"} className="w-full h-full object-cover" />
+                  {!user.unlock_custom_banner && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><Lock size={16} className="text-white/40" /></div>}
+                </div>
+                <input 
+                  value={cover} 
+                  onChange={e => setCover(e.target.value)} 
+                  disabled={!user.unlock_custom_banner}
+                  placeholder={user.unlock_custom_banner ? "https://..." : "Unlock to customize"}
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed focus:border-cyber-neon/50" 
+                />
+              </div>
+            </div>
+          </div>
+
+          <NeonButton onClick={handleSave} disabled={loading} className="w-full py-3">Save Changes</NeonButton>
+        </GlassCard>
+      </motion.div>
+    </div>
+  );
+};
+
+function ProfileView({ user, setUser, onSecurity, onThemes, onStore, onTickets }: { user: User, setUser: (u: User) => void, onSecurity: () => void, onThemes: () => void, onStore: () => void, onTickets: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [showRedeem, setShowRedeem] = useState(false);
+  const [redeemCode, setRedeemCode] = useState('');
   const [activeSubTab, setActiveSubTab] = useState<'bio' | 'friends' | 'wallet'>('bio');
   const [friends, setFriends] = useState<Friendship[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -1706,28 +2494,43 @@ function ProfileView({ user, setUser, onSecurity, onThemes }: { user: User, setU
 
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-4xl mx-auto space-y-8">
-      <div className="relative">
-        <div className="h-48 rounded-3xl overflow-hidden border border-white/10">
+      <AnimatePresence>
+        {isEditing && <EditProfileModal user={user} onClose={() => setIsEditing(false)} onUpdate={setUser} />}
+      </AnimatePresence>
+
+      <div className="relative mb-16 sm:mb-0">
+        <div className="h-48 rounded-3xl overflow-hidden border border-white/10 relative group">
           <img src={user.cover || "https://picsum.photos/seed/profile/1200/400"} className="w-full h-full object-cover opacity-50" alt="Cover" />
+          {!user.unlock_custom_banner && <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded-full text-[10px] font-bold text-white/60 flex items-center gap-1"><Lock size={10} /> DEFAULT BANNER</div>}
           <div className="absolute inset-0 bg-gradient-to-t from-cyber-dark to-transparent" />
         </div>
-        <div className="absolute -bottom-12 left-8 flex items-end gap-6">
-          <div className="w-32 h-32 rounded-3xl border-4 border-cyber-dark overflow-hidden bg-cyber-dark">
+        <div className="absolute -bottom-12 left-4 sm:left-8 flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 w-full sm:w-auto">
+          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl border-4 border-cyber-dark overflow-hidden bg-cyber-dark relative group shrink-0">
             <img src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} className="w-full h-full" alt="Avatar" />
+            {!user.unlock_custom_pfp && <div className="absolute top-2 left-2 bg-black/60 px-2 py-0.5 rounded-full text-[8px] font-bold text-white/60 flex items-center gap-1"><Lock size={8} /> DEFAULT</div>}
           </div>
-          <div className="pb-4">
+          <div className="pb-0 sm:pb-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-black tracking-tighter">{user.display_name}</h2>
-              {user.verification_status === 'approved' && <ShieldCheck className="text-cyber-neon w-5 h-5" />}
+              <h2 className="text-xl sm:text-2xl font-black tracking-tighter">{user.display_name}</h2>
+              {user.verification_status === 'approved' && <ShieldCheck className="text-cyber-neon w-4 h-4 sm:w-5 sm:h-5" />}
             </div>
-            <p className="text-cyber-neon font-mono text-sm">@{user.username}</p>
+            <p className="text-cyber-neon font-mono text-xs sm:text-sm">@{user.username}</p>
           </div>
         </div>
-        <div className="absolute top-4 right-4 flex gap-2">
-          <NeonButton variant="ghost" onClick={onThemes}><Palette size={18} /> Themes</NeonButton>
+        <div className="absolute top-4 right-4 hidden sm:flex gap-2">
+          <NeonButton variant="ghost" onClick={onStore}><Store size={18} /> Store</NeonButton>
+          <NeonButton variant="ghost" onClick={onTickets}><TicketIcon size={18} /> Tickets</NeonButton>
+          <NeonButton variant="ghost" onClick={() => setShowRedeem(true)}><Gift size={18} /> Redeem</NeonButton>
           <NeonButton variant="ghost" onClick={onSecurity}><Shield size={18} /> Security</NeonButton>
-          <NeonButton variant="ghost" onClick={() => setIsEditing(!isEditing)}><Settings size={18} /> Edit Profile</NeonButton>
+          <NeonButton variant="ghost" onClick={() => setIsEditing(true)}><Settings size={18} /> Edit</NeonButton>
         </div>
+      </div>
+
+      <div className="sm:hidden flex gap-2 overflow-x-auto pb-2 scrollbar-hide pt-4">
+        <NeonButton variant="ghost" onClick={onStore} className="shrink-0 text-xs py-1.5"><Store size={14} /> Store</NeonButton>
+        <NeonButton variant="ghost" onClick={onTickets} className="shrink-0 text-xs py-1.5"><TicketIcon size={14} /> Tickets</NeonButton>
+        <NeonButton variant="ghost" onClick={() => setShowRedeem(true)} className="shrink-0 text-xs py-1.5"><Gift size={14} /> Redeem</NeonButton>
+        <NeonButton variant="ghost" onClick={() => setIsEditing(true)} className="shrink-0 text-xs py-1.5"><Settings size={14} /> Edit</NeonButton>
       </div>
 
       <div className="pt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -1758,7 +2561,9 @@ function ProfileView({ user, setUser, onSecurity, onThemes }: { user: User, setU
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="blue">#{user.grade.replace(' ', '')}</Badge>
                       {user.house && <Badge variant="neon">#{user.house.replace(' ', '')}</Badge>}
-                      <Badge variant="pink">#{user.verification_status.toUpperCase()}</Badge>
+                      <Badge variant="pink">#{user.verification_status?.toUpperCase() || 'PENDING'}</Badge>
+                      <Badge variant="gold">PRESTIGE {user.prestige_level || 0}</Badge>
+                      <Badge variant="blue">STREAK {user.streak_count || 0}</Badge>
                     </div>
                   </div>
                 </GlassCard>
@@ -1806,7 +2611,7 @@ function ProfileView({ user, setUser, onSecurity, onThemes }: { user: User, setU
                           {t.amount > 0 ? <TrendingUp size={16} /> : <CreditCard size={16} />}
                         </div>
                         <div>
-                          <p className="text-sm font-bold">{t.type.toUpperCase()}</p>
+                          <p className="text-sm font-bold">{t.type?.toUpperCase() || 'TRANSACTION'}</p>
                           <p className="text-[10px] text-white/40">{format(new Date(t.created_at), 'MMM dd, HH:mm')}</p>
                         </div>
                       </div>
@@ -1824,7 +2629,7 @@ function ProfileView({ user, setUser, onSecurity, onThemes }: { user: User, setU
         <div className="space-y-6">
           <GlassCard className="text-center">
             <p className="text-[10px] uppercase font-bold text-white/40 mb-1">Grid Rank</p>
-            <p className="text-3xl font-black text-cyber-blue tracking-tighter">{user.role.toUpperCase()}</p>
+            <p className="text-3xl font-black text-cyber-blue tracking-tighter">{user.role?.toUpperCase() || 'USER'}</p>
           </GlassCard>
           
           <GlassCard className="space-y-4">
@@ -1848,6 +2653,55 @@ function ProfileView({ user, setUser, onSecurity, onThemes }: { user: User, setU
           <NeonButton variant="danger" className="w-full" onClick={handleLogout}><LogOut size={18} /> Disconnect Frequency</NeonButton>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showRedeem && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cyber-dark/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <GlassCard className="w-full max-w-md space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tighter">REDEEM CODE</h3>
+                  <button onClick={() => setShowRedeem(false)} className="p-2 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Access Code</label>
+                    <input 
+                      value={redeemCode}
+                      onChange={e => setRedeemCode(e.target.value)}
+                      placeholder="ENTER_CODE_HERE"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center font-mono text-lg tracking-widest outline-none"
+                    />
+                  </div>
+                  <NeonButton 
+                    className="w-full py-3"
+                    onClick={async () => {
+                      const res = await fetch('/api/redeem', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: redeemCode })
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        alert(`Success! Redeemed: ${data.reward_value} ${data.reward_type}`);
+                        setShowRedeem(false);
+                        setRedeemCode('');
+                        const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+                        setUser(updatedUser);
+                      } else {
+                        const err = await res.json();
+                        alert(err.error);
+                      }
+                    }}
+                  >
+                    VALIDATE CODE
+                  </NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -1973,18 +2827,18 @@ function SecurityView({ user }: { user: User }) {
           <h3 className="font-bold flex items-center gap-2"><Smartphone size={18} className="text-cyber-blue" /> Active Sessions</h3>
           <div className="space-y-3">
             {sessions.map(session => (
-              <div key={session.id} className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div key={session.id} className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
+                  <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/10 shrink-0">
                     <Globe size={20} className="text-white/40" />
                   </div>
-                  <div>
-                    <p className="text-sm font-bold">{session.ip_address}</p>
-                    <p className="text-[10px] text-white/60 truncate max-w-[200px]">{session.user_agent}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate">{session.ip_address}</p>
+                    <p className="text-[10px] text-white/60 truncate max-w-[200px] sm:max-w-[300px]">{session.user_agent}</p>
                     <p className="text-[10px] text-white/40">Last active: {format(new Date(session.last_activity_at), 'MMM dd, HH:mm')}</p>
                   </div>
                 </div>
-                <NeonButton variant="ghost" className="text-xs px-3 py-1.5" onClick={() => revokeSession(session.id)}>Revoke</NeonButton>
+                <NeonButton variant="ghost" className="text-xs px-3 py-1.5 w-full sm:w-auto" onClick={() => revokeSession(session.id)}>Revoke</NeonButton>
               </div>
             ))}
           </div>
@@ -2009,11 +2863,784 @@ function SecurityView({ user }: { user: User }) {
   );
 }
 
+function VaultView({ user, setUser }: { user: User, setUser: (u: User) => void }) {
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showSell, setShowSell] = useState(false);
+  const [newListing, setNewListing] = useState({ title: '', description: '', category: 'item', price: 100 });
+
+  useEffect(() => {
+    fetch('/api/vault/listings').then(r => r.json()).then(data => {
+      setListings(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleBuy = async (listingId: string) => {
+    const res = await fetch('/api/vault/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId })
+    });
+    if (res.ok) {
+      alert('Purchase successful!');
+      fetch('/api/vault/listings').then(r => r.json()).then(setListings);
+      const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+      setUser(updatedUser);
+    } else {
+      const err = await res.json();
+      alert(err.error);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center opacity-40">LOADING VAULT...</div>;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black tracking-tighter text-amber-500">THE VAULT</h2>
+          <p className="text-xs text-white/40 font-mono uppercase">PLAYER TRADING MARKETPLACE</p>
+        </div>
+        <NeonButton onClick={() => setShowSell(true)} className="flex items-center gap-2 border-amber-500/50 text-amber-500 hover:bg-amber-500/10">
+          <Plus size={18} /> SELL ITEM
+        </NeonButton>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {listings.map(listing => (
+          <GlassCard key={listing.id} className="border-amber-500/20">
+            <div className="flex items-center justify-between mb-4">
+              <Badge variant="gold">{listing.category.toUpperCase()}</Badge>
+              <div className="flex items-center gap-2">
+                <Avatar seed={listing.seller_id} size="sm" />
+                <span className="text-[10px] text-white/40">@{listing.seller_id.substring(0, 8)}</span>
+              </div>
+            </div>
+            <h3 className="text-lg font-bold truncate">{listing.title}</h3>
+            <p className="text-xs text-white/60 mt-1 h-10 overflow-hidden">{listing.description}</p>
+            <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <Coins size={14} className="text-amber-500" />
+                <span className="text-sm font-mono font-bold text-amber-500">{listing.price}</span>
+              </div>
+              <NeonButton 
+                className="text-xs px-4 py-1.5 border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
+                onClick={() => handleBuy(listing.id)}
+                disabled={user.toins < listing.price || listing.seller_id === user.id}
+              >
+                {listing.seller_id === user.id ? 'YOUR LISTING' : 'BUY NOW'}
+              </NeonButton>
+            </div>
+          </GlassCard>
+        ))}
+        {listings.length === 0 && <div className="col-span-full text-center py-12 opacity-40">NO ACTIVE LISTINGS IN THE VAULT</div>}
+      </div>
+
+      <AnimatePresence>
+        {showSell && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cyber-dark/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <GlassCard className="w-full max-w-md space-y-6 border-amber-500/20">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tighter text-amber-500">LIST ITEM FOR SALE</h3>
+                  <button onClick={() => setShowSell(false)} className="p-2 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Item Title</label>
+                    <input 
+                      value={newListing.title}
+                      onChange={e => setNewListing({...newListing, title: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      placeholder="e.g. Rare Neon Frame"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Description</label>
+                    <textarea 
+                      value={newListing.description}
+                      onChange={e => setNewListing({...newListing, description: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none min-h-[80px]"
+                      placeholder="Describe what you are selling..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Category</label>
+                      <select 
+                        value={newListing.category}
+                        onChange={e => setNewListing({...newListing, category: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      >
+                        <option value="item">Digital Item</option>
+                        <option value="service">Service</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Price (Toins)</label>
+                      <input 
+                        type="number"
+                        value={newListing.price}
+                        onChange={e => setNewListing({...newListing, price: parseInt(e.target.value)})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+                  <NeonButton 
+                    className="w-full py-3 border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
+                    onClick={async () => {
+                      const res = await fetch('/api/vault/listings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newListing)
+                      });
+                      if (res.ok) {
+                        setShowSell(false);
+                        fetch('/api/vault/listings').then(r => r.json()).then(setListings);
+                      }
+                    }}
+                  >
+                    CREATE LISTING
+                  </NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function StoreView({ user, setUser }: { user: User, setUser: (u: User) => void }) {
+  const [storeTab, setStoreTab] = useState<'official' | 'vault'>('official');
+  const [items, setItems] = useState<StoreItem[]>([]);
+  const [inventory, setInventory] = useState<UserInventory[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/store/items').then(r => r.json()),
+      fetch('/api/store/inventory').then(r => r.json())
+    ]).then(([itemsData, invData]) => {
+      setItems(itemsData);
+      setInventory(invData);
+      setLoading(false);
+    });
+  }, []);
+
+  const purchase = async (itemId: string) => {
+    const res = await fetch('/api/store/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId })
+    });
+    if (res.ok) {
+      const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+      setUser(updatedUser);
+      const inv = await fetch('/api/store/inventory').then(r => r.json());
+      setInventory(inv);
+    } else {
+      const err = await res.json();
+      alert(err.error);
+    }
+  };
+
+  const activate = async (itemId: string) => {
+    const res = await fetch('/api/store/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId })
+    });
+    if (res.ok) {
+      const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+      setUser(updatedUser);
+      const inv = await fetch('/api/store/inventory').then(r => r.json());
+      setInventory(inv);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center opacity-40">LOADING STORE...</div>;
+
+  if (storeTab === 'vault') return (
+    <div className="space-y-6">
+      <div className="flex gap-4 mb-6">
+        <NeonButton variant="ghost" onClick={() => setStoreTab('official')}>OFFICIAL STORE</NeonButton>
+        <NeonButton variant="blue" onClick={() => setStoreTab('vault')}>THE VAULT</NeonButton>
+      </div>
+      <VaultView user={user} setUser={setUser} />
+    </div>
+  );
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black tracking-tighter">PROFILE STORE</h2>
+          <p className="text-xs text-white/40 font-mono uppercase">CUSTOMIZE YOUR DIGITAL IDENTITY</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex gap-2">
+            <NeonButton variant="blue" onClick={() => setStoreTab('official')}>OFFICIAL STORE</NeonButton>
+            <NeonButton variant="ghost" onClick={() => setStoreTab('vault')}>THE VAULT</NeonButton>
+          </div>
+          <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl border border-white/10">
+            <Coins className="text-cyber-neon" size={20} />
+            <span className="font-mono font-bold text-xl">{user.toins}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {items.map(item => {
+          const owned = inventory.find(i => i.item_id === item.id);
+          return (
+            <GlassCard key={item.id} className="flex flex-col h-full">
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Badge variant={item.category === 'frame' ? 'neon' : item.category === 'effect' ? 'pink' : 'blue'}>
+                    {item.category}
+                  </Badge>
+                  {owned && <Badge variant="gold">OWNED</Badge>}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">{item.name}</h3>
+                  <p className="text-xs text-white/60 mt-1">{item.description}</p>
+                </div>
+              </div>
+              <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Coins size={14} className="text-cyber-neon" />
+                  <span className="text-sm font-mono font-bold">{item.price}</span>
+                </div>
+                {owned ? (
+                  <NeonButton 
+                    variant={owned.is_active ? 'ghost' : 'blue'} 
+                    className="text-xs px-4 py-1.5"
+                    onClick={() => !owned.is_active && activate(item.id)}
+                  >
+                    {owned.is_active ? 'ACTIVE' : 'ACTIVATE'}
+                  </NeonButton>
+                ) : (
+                  <NeonButton 
+                    className="text-xs px-4 py-1.5"
+                    onClick={() => purchase(item.id)}
+                    disabled={user.toins < item.price}
+                  >
+                    PURCHASE
+                  </NeonButton>
+                )}
+              </div>
+            </GlassCard>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+function TasksView({ user }: { user: User }) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showCreateChallenge, setShowCreateChallenge] = useState(false);
+  const [showSubmit, setShowSubmit] = useState<string | null>(null);
+  const [proofText, setProofText] = useState('');
+  const [newTask, setNewTask] = useState({ title: '', description: '', reward: 100, deadline: format(new Date(Date.now() + 86400000 * 7), 'yyyy-MM-dd'), proof_requirement: '' });
+  const [newChallenge, setNewChallenge] = useState({ title: '', description: '', stakes: 100, targetId: '', deadline: format(new Date(Date.now() + 86400000 * 7), 'yyyy-MM-dd') });
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/tasks').then(r => r.json()),
+      fetch('/api/challenges').then(r => r.json())
+    ]).then(([tasksData, challengesData]) => {
+      setTasks(tasksData);
+      setChallenges(challengesData);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return <div className="p-8 text-center opacity-40">LOADING TASKS...</div>;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black tracking-tighter">TASKS & CHALLENGES</h2>
+          <p className="text-xs text-white/40 font-mono uppercase">EARN TOINS THROUGH ENGAGEMENT</p>
+        </div>
+        <NeonButton onClick={() => setShowCreateTask(true)} className="flex items-center gap-2">
+          <Plus size={18} /> CREATE TASK
+        </NeonButton>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <h3 className="font-bold flex items-center gap-2 uppercase tracking-widest text-xs text-white/40">
+            <ClipboardList size={14} /> Available Tasks
+          </h3>
+          <div className="space-y-4">
+            {tasks.map(task => (
+              <GlassCard key={task.id} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold">{task.title}</h4>
+                  <div className="flex items-center gap-1 bg-cyber-neon/10 px-2 py-1 rounded-lg border border-cyber-neon/20">
+                    <Coins size={12} className="text-cyber-neon" />
+                    <span className="text-xs font-mono font-bold text-cyber-neon">{task.reward}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-white/60">{task.description}</p>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[10px] text-white/40 uppercase">By {task.creator_name}</span>
+                  <NeonButton variant="ghost" className="text-[10px] px-3 py-1" onClick={() => setShowSubmit(task.id)}>SUBMIT PROOF</NeonButton>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold flex items-center gap-2 uppercase tracking-widest text-xs text-white/40">
+              <Zap size={14} /> Active Challenges
+            </h3>
+            <NeonButton variant="ghost" className="text-[10px] px-2 py-1" onClick={() => setShowCreateChallenge(true)}>NEW CHALLENGE</NeonButton>
+          </div>
+          <div className="space-y-4">
+            {challenges.map(chal => (
+              <GlassCard key={chal.id} className="space-y-4 border-cyber-pink/20">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold">{chal.title}</h4>
+                  <Badge variant="pink">{chal.stakes} T STAKES</Badge>
+                </div>
+                <p className="text-xs text-white/60">{chal.description}</p>
+                <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center gap-2">
+                    <Avatar seed={chal.challenger_name || ''} size="sm" />
+                    <span className="text-[10px] text-white/40 uppercase">VS</span>
+                    <Avatar seed={chal.target_name || ''} size="sm" />
+                  </div>
+                  <Badge variant={chal.status === 'pending' ? 'neon' : 'blue'}>{chal.status}</Badge>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showCreateTask && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cyber-dark/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <GlassCard className="w-full max-w-md space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tighter">CREATE NEW TASK</h3>
+                  <button onClick={() => setShowCreateTask(false)} className="p-2 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Title</label>
+                    <input 
+                      value={newTask.title}
+                      onChange={e => setNewTask({...newTask, title: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      placeholder="e.g. Help with Physics Homework"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Description</label>
+                    <textarea 
+                      value={newTask.description}
+                      onChange={e => setNewTask({...newTask, description: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none min-h-[80px]"
+                      placeholder="Describe the task..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Reward (Toins)</label>
+                      <input 
+                        type="number"
+                        value={newTask.reward}
+                        onChange={e => setNewTask({...newTask, reward: parseInt(e.target.value)})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Deadline</label>
+                      <input 
+                        type="date"
+                        value={newTask.deadline}
+                        onChange={e => setNewTask({...newTask, deadline: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Proof Requirement</label>
+                    <input 
+                      value={newTask.proof_requirement}
+                      onChange={e => setNewTask({...newTask, proof_requirement: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      placeholder="e.g. Screenshot of completed work"
+                    />
+                  </div>
+                  <NeonButton 
+                    className="w-full py-3"
+                    onClick={async () => {
+                      const res = await fetch('/api/tasks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newTask)
+                      });
+                      if (res.ok) {
+                        setShowCreateTask(false);
+                        fetch('/api/tasks').then(r => r.json()).then(setTasks);
+                      }
+                    }}
+                  >
+                    POST TASK
+                  </NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+
+        {showCreateChallenge && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cyber-dark/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <GlassCard className="w-full max-w-md space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tighter">CREATE CHALLENGE</h3>
+                  <button onClick={() => setShowCreateChallenge(false)} className="p-2 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Title</label>
+                    <input 
+                      value={newChallenge.title}
+                      onChange={e => setNewChallenge({...newChallenge, title: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      placeholder="e.g. Math Duel"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Description</label>
+                    <textarea 
+                      value={newChallenge.description}
+                      onChange={e => setNewChallenge({...newChallenge, description: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none min-h-[80px]"
+                      placeholder="Rules of the challenge..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Stakes (Toins)</label>
+                      <input 
+                        type="number"
+                        value={newChallenge.stakes}
+                        onChange={e => setNewChallenge({...newChallenge, stakes: parseInt(e.target.value)})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Deadline</label>
+                      <input 
+                        type="date"
+                        value={newChallenge.deadline}
+                        onChange={e => setNewChallenge({...newChallenge, deadline: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Opponent ID</label>
+                    <input 
+                      value={newChallenge.targetId}
+                      onChange={e => setNewChallenge({...newChallenge, targetId: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                      placeholder="User ID to challenge"
+                    />
+                  </div>
+                  <NeonButton 
+                    className="w-full py-3"
+                    onClick={async () => {
+                      const res = await fetch('/api/challenges', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newChallenge)
+                      });
+                      if (res.ok) {
+                        setShowCreateChallenge(false);
+                        fetch('/api/challenges').then(r => r.json()).then(setChallenges);
+                      } else {
+                        const err = await res.json();
+                        alert(err.error);
+                      }
+                    }}
+                  >
+                    ISSUE CHALLENGE
+                  </NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+
+        {showSubmit && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cyber-dark/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <GlassCard className="w-full max-w-md space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tighter">SUBMIT PROOF</h3>
+                  <button onClick={() => setShowSubmit(null)} className="p-2 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Proof Details</label>
+                    <textarea 
+                      value={proofText}
+                      onChange={e => setProofText(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none min-h-[120px]"
+                      placeholder="Explain how you completed the task..."
+                    />
+                  </div>
+                  <NeonButton 
+                    className="w-full py-3"
+                    onClick={async () => {
+                      const res = await fetch('/api/tasks/submit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ taskId: showSubmit, proofText })
+                      });
+                      if (res.ok) {
+                        setShowSubmit(null);
+                        setProofText('');
+                        alert('Submission sent for verification!');
+                      }
+                    }}
+                  >
+                    SUBMIT FOR VERIFICATION
+                  </NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function LeaderboardView({ user }: { user: User }) {
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/leaderboard').then(r => r.json()).then(data => {
+      setLeaderboard(data);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return <div className="p-8 text-center opacity-40">LOADING RANKINGS...</div>;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div>
+        <h2 className="text-3xl font-black tracking-tighter">CAMPUS RANKINGS</h2>
+        <p className="text-xs text-white/40 font-mono uppercase">THE ELITE OF TGH CAMPUS</p>
+      </div>
+
+      <GlassCard className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-white/5 border-b border-white/10">
+                <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Rank</th>
+                <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Student</th>
+                <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Level</th>
+                <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-white/40">XP</th>
+                <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Toins</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaderboard.map((u, i) => (
+                <tr key={u.id} className={cn("border-b border-white/5 hover:bg-white/5 transition-colors", u.id === user.id && "bg-cyber-neon/5")}>
+                  <td className="p-4">
+                    <span className={cn(
+                      "font-mono font-bold",
+                      i === 0 ? "text-yellow-400 text-lg" : i === 1 ? "text-slate-300" : i === 2 ? "text-amber-600" : "text-white/40"
+                    )}>
+                      #{i + 1}
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar seed={u.username} src={u.avatar} size="sm" />
+                      <div>
+                        <p className="text-sm font-bold">{u.display_name}</p>
+                        <p className="text-[10px] text-white/40">@{u.username}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-4 font-mono text-sm">{u.level}</td>
+                  <td className="p-4 font-mono text-sm">{u.xp}</td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-1">
+                      <Coins size={14} className="text-cyber-neon" />
+                      <span className="font-mono font-bold text-sm">{u.toins}</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+    </motion.div>
+  );
+}
+
+function TicketsView({ user }: { user: User }) {
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newTicket, setNewTicket] = useState({ category: 'account_issue', content: '' });
+
+  useEffect(() => {
+    fetch('/api/tickets').then(r => r.json()).then(data => {
+      setTickets(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const createTicket = async () => {
+    if (!newTicket.content) return;
+    const res = await fetch('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTicket)
+    });
+    if (res.ok) {
+      setShowCreate(false);
+      setNewTicket({ category: 'account_issue', content: '' });
+      fetch('/api/tickets').then(r => r.json()).then(setTickets);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center opacity-40">LOADING TICKETS...</div>;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black tracking-tighter">SUPPORT CENTER</h2>
+          <p className="text-xs text-white/40 font-mono uppercase">OFFICIAL HELP & REPORTING</p>
+        </div>
+        <NeonButton onClick={() => setShowCreate(true)} className="flex items-center gap-2">
+          <TicketIcon size={18} /> OPEN TICKET
+        </NeonButton>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        {tickets.map(ticket => (
+          <GlassCard key={ticket.id} className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center border",
+                ticket.status === 'open' ? "bg-cyber-neon/10 border-cyber-neon/30 text-cyber-neon" : "bg-white/5 border-white/10 text-white/40"
+              )}>
+                <TicketIcon size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wider">{ticket.category.replace('_', ' ')}</p>
+                <p className="text-[10px] text-white/40">ID: {ticket.id} // Opened: {format(new Date(ticket.created_at), 'MMM dd, HH:mm')}</p>
+              </div>
+            </div>
+            <Badge variant={ticket.status === 'open' ? 'neon' : 'blue'}>{ticket.status}</Badge>
+          </GlassCard>
+        ))}
+        {tickets.length === 0 && (
+          <div className="p-12 text-center opacity-40 border-2 border-dashed border-white/10 rounded-3xl">
+            <TicketIcon className="mx-auto mb-4 opacity-20" size={48} />
+            <p className="font-mono text-sm">NO ACTIVE TICKETS FOUND</p>
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {showCreate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cyber-dark/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <GlassCard className="w-full max-w-md space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tighter">OPEN NEW TICKET</h3>
+                  <button onClick={() => setShowCreate(false)} className="p-2 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Category</label>
+                    <select 
+                      value={newTicket.category}
+                      onChange={e => setNewTicket({...newTicket, category: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none"
+                    >
+                      <option value="account_issue">Account Issue</option>
+                      <option value="report_user">Report User</option>
+                      <option value="report_post">Report Content</option>
+                      <option value="suggest_feature">Feature Suggestion</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-white/40 ml-1">Message</label>
+                    <textarea 
+                      value={newTicket.content}
+                      onChange={e => setNewTicket({...newTicket, content: e.target.value})}
+                      placeholder="Describe your issue in detail..."
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none min-h-[120px] resize-none"
+                    />
+                  </div>
+                  <NeonButton onClick={createTicket} className="w-full py-3">SUBMIT TICKET</NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
 function NavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
-    <button onClick={onClick} className={cn("flex flex-col items-center justify-center gap-1 transition-all", active ? "text-cyber-neon" : "text-white/40")}>
-      <div className={cn("p-1 rounded-lg", active && "bg-cyber-neon/10")}>{React.cloneElement(icon as React.ReactElement<any>, { size: 20 })}</div>
-      <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+    <button onClick={onClick} className={cn("flex flex-col items-center justify-center gap-1 transition-all relative w-16 h-14", active ? "text-cyber-neon" : "text-white/40 hover:text-white/70")}>
+      <motion.div 
+        animate={active ? { y: -2, scale: 1.1 } : { y: 0, scale: 1 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        className={cn("p-1.5 rounded-xl z-10", active && "bg-cyber-neon/10 shadow-[0_0_10px_rgba(0,255,159,0.2)]")}
+      >
+        {React.cloneElement(icon as React.ReactElement<any>, { size: 20 })}
+      </motion.div>
+      <motion.span 
+        animate={active ? { opacity: 1, y: 0 } : { opacity: 0.7, y: 2 }}
+        className="text-[9px] font-bold uppercase tracking-wider z-10"
+      >
+        {label}
+      </motion.span>
+      {active && (
+        <motion.div 
+          layoutId="nav-indicator"
+          className="absolute inset-0 bg-gradient-to-t from-cyber-neon/10 to-transparent rounded-xl -z-0"
+          initial={false}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        />
+      )}
     </button>
   );
 }

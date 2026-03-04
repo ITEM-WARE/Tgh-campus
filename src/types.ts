@@ -7,6 +7,7 @@ export interface User {
   display_name: string;
   username_locked: boolean;
   verification_status: 'pending' | 'approved' | 'rejected' | 'banned';
+  is_verified?: boolean; // Derived helper
   role: 'pending_student' | 'student' | 'moderator' | 'admin';
   grade: string;
   section: string;
@@ -16,6 +17,7 @@ export interface User {
   level: number;
   avatar: string | null;
   cover: string | null;
+  cover_url?: string; // Alias
   strikes: number;
   created_at: string;
   verified_at: string | null;
@@ -23,6 +25,18 @@ export interface User {
   account_locked_until: string | null;
   risk_score: number;
   is_flagged: boolean;
+  unlock_custom_pfp?: boolean;
+  unlock_custom_banner?: boolean;
+  bio?: string;
+  active_frame?: string;
+  active_username_effect?: string;
+  active_profile_theme?: string;
+  active_chat_bubble?: string;
+  active_status_icon?: string;
+  streak_count?: number;
+  last_login_at?: string;
+  prestige_level?: number;
+  reputation?: number;
 }
 
 export interface SecurityEvent {
@@ -81,8 +95,10 @@ export interface Message {
   id: string;
   conversation_id: string;
   sender_id: string;
+  sender_name?: string;
+  sender_avatar?: string;
   content: string;
-  content_type: 'text' | 'image' | 'file' | 'poll' | 'system';
+  content_type: 'text' | 'image' | 'voice' | 'gif' | 'file' | 'poll' | 'system';
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
@@ -98,7 +114,11 @@ export interface Conversation {
   created_by: string;
   created_at: string;
   last_message_at: string;
+  last_message?: string;
+  last_message_type?: string;
   members?: User[];
+  avatar?: string;
+  other_user_id?: string;
 }
 
 export interface Story {
@@ -106,11 +126,32 @@ export interface Story {
   user_id: string;
   media_url: string;
   text_overlay: string | null;
+  title?: string;
+  tags?: string;
   created_at: string;
   expires_at: string;
   visibility: 'public' | 'close_friends';
   view_count: number;
   user?: User;
+}
+
+export interface Post {
+  id: string;
+  user_id: string;
+  content: string;
+  media_url?: string;
+  voice_url?: string;
+  title?: string;
+  tags?: string;
+  type: 'public' | 'confession' | 'news';
+  status: 'pending' | 'approved' | 'rejected';
+  engagement_score: number;
+  timestamp: string;
+  author?: string;
+  author_username?: string;
+  author_avatar?: string;
+  author_role?: string;
+  author_status?: string;
 }
 
 export interface Listing {
@@ -120,6 +161,7 @@ export interface Listing {
   description: string;
   category: string;
   price: number;
+  image_url?: string;
   status: 'active' | 'sold' | 'removed';
   created_at: string;
   seller?: User;
@@ -175,6 +217,112 @@ export interface DiscussionQuery {
   query: string;
   created_at: string;
   user?: User;
+}
+
+export interface StoreItem {
+  id: string;
+  name: string;
+  description: string;
+  category: 'frame' | 'effect' | 'theme' | 'banner' | 'chat' | 'booster' | 'badge';
+  price: number;
+  type: string;
+  metadata?: string;
+  created_at: string;
+  is_owned?: boolean;
+  is_equipped?: boolean;
+}
+
+export interface UserInventory {
+  user_id: string;
+  item_id: string;
+  purchased_at: string;
+  is_active: boolean;
+  name?: string;
+  category?: string;
+  metadata?: string;
+}
+
+export interface Task {
+  id: string;
+  creator_id: string;
+  creator_name?: string;
+  title: string;
+  description: string;
+  reward: number;
+  deadline: string;
+  proof_requirement: string;
+  status: 'active' | 'completed' | 'expired';
+  created_at: string;
+}
+
+export interface TaskSubmission {
+  id: string;
+  task_id: string;
+  task_title?: string;
+  user_id: string;
+  display_name?: string;
+  username?: string;
+  proof_text: string;
+  proof_media?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_feedback?: string;
+  submitted_at: string;
+}
+
+export interface Challenge {
+  id: string;
+  challenger_id: string;
+  challenger_name?: string;
+  target_id: string;
+  target_name?: string;
+  title: string;
+  description: string;
+  stakes: number;
+  deadline: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'completed' | 'disputed';
+  winner_id?: string;
+  created_at: string;
+}
+
+export interface Ticket {
+  id: string;
+  user_id: string;
+  display_name?: string;
+  username?: string;
+  subject: string;
+  description: string;
+  category: 'report_user' | 'report_post' | 'appeal_ban' | 'account_issue' | 'suggest_feature' | 'other' | 'general' | 'bug_report' | 'suggestion' | 'appeal';
+  status: 'open' | 'in_progress' | 'resolved' | 'flagged';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticket_id: string;
+  sender_id: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface AIHistory {
+  id: number;
+  user_id: string;
+  role: 'user' | 'ai';
+  content: string;
+  timestamp: string;
+}
+
+export interface RedeemCode {
+  code: string;
+  reward_type: 'toins' | 'item';
+  reward_value: string;
+  max_uses: number;
+  current_uses: number;
+  expires_at?: string;
+  created_by: string;
+  hint?: string;
+  is_treasure_hunt: boolean;
 }
 
 export const USER_SCHEMA = {

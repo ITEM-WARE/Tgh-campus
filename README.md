@@ -2,8 +2,7 @@
 # Run and deploy 
 
 This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/623abf38-3361-4db6-8520-aba20969e1e9
+CREDIT TO SOLO DEV : PIXELS
 
 ## Run Locally
 

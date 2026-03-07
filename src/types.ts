@@ -37,6 +37,11 @@ export interface User {
   last_login_at?: string;
   prestige_level?: number;
   reputation?: number;
+  stats?: {
+    posts: number;
+    followers: number;
+    reputation: number;
+  };
 }
 
 export interface SecurityEvent {
@@ -152,6 +157,7 @@ export interface Post {
   author_avatar?: string;
   author_role?: string;
   author_status?: string;
+  is_edited?: boolean;
 }
 
 export interface Listing {

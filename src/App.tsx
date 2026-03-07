@@ -60,7 +60,10 @@ import {
   Store,
   Gift,
   MousePointer2,
-  ZapOff
+  ZapOff,
+  Flag,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -178,11 +181,12 @@ const GatedFeature = ({ status, children, fallback }: { status: string, children
 
 export default function App() {
   const [view, setView] = useState<'auth' | 'onboarding' | 'app' | 'admin'>('auth');
-  const [activeTab, setActiveTab] = useState<'hub' | 'chat' | 'study' | 'store' | 'profile' | 'security' | 'custom' | 'tasks' | 'leaderboard' | 'tickets'>('hub');
+  const [activeTab, setActiveTab] = useState<'hub' | 'chat' | 'study' | 'store' | 'profile' | 'security' | 'custom' | 'tasks' | 'leaderboard' | 'tickets' | 'market'>('hub');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -288,22 +292,31 @@ export default function App() {
             <Header user={user!} setActiveTab={setActiveTab} activeTab={activeTab} onAdmin={() => setView('admin')} notifications={notifications} />
             <main className="pt-20 pb-24 px-4 max-w-7xl mx-auto">
               <AnimatePresence mode="wait">
-                {activeTab === 'hub' && <HubView key="hub" user={user!} />}
+                {activeTab === 'hub' && <HubView key="hub" user={user!} onViewProfile={setSelectedProfileId} />}
                 {activeTab === 'study' && <StudyView key="study" user={user!} />}
-                {activeTab === 'chat' && <ChatView key="chat" user={user!} socket={socketRef.current!} />}
+                {activeTab === 'chat' && <ChatView key="chat" user={user!} socket={socketRef.current!} onViewProfile={setSelectedProfileId} />}
                 {activeTab === 'store' && <StoreView key="store" user={user!} setUser={setUser} />}
                 {activeTab === 'tasks' && <TasksView key="tasks" user={user!} />}
-                {activeTab === 'leaderboard' && <LeaderboardView key="leaderboard" user={user!} />}
+                {activeTab === 'leaderboard' && <LeaderboardView key="leaderboard" user={user!} onViewProfile={setSelectedProfileId} />}
                 {activeTab === 'tickets' && <TicketsView key="tickets" user={user!} />}
                 {activeTab === 'custom' && <CustomizationView key="custom" user={user!} />}
                 {activeTab === 'profile' && <ProfileView key="profile" user={user!} setUser={setUser} onSecurity={() => setActiveTab('security')} onThemes={() => setActiveTab('custom')} onStore={() => setActiveTab('store')} onTickets={() => setActiveTab('tickets')} />}
                 {activeTab === 'security' && <SecurityView key="security" user={user!} />}
+                {activeTab === 'market' && <MarketView key="market" user={user!} onViewProfile={setSelectedProfileId} />}
               </AnimatePresence>
             </main>
             <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
           </motion.div>
         )}
       </AnimatePresence>
+
+      {selectedProfileId && (
+        <PublicProfileModal 
+          userId={selectedProfileId} 
+          onClose={() => setSelectedProfileId(null)} 
+          currentUser={user!} 
+        />
+      )}
     </div>
   );
 }
@@ -619,7 +632,7 @@ function OnboardingView({ user, onComplete }: { user: User, onComplete: (u: User
 }
 
 function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
-  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'queue' | 'audit' | 'ips' | 'security' | 'academics' | 'tickets' | 'tasks' | 'redeem' | 'store'>('stats');
+  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'queue' | 'audit' | 'ips' | 'security' | 'academics' | 'tickets' | 'tasks' | 'redeem' | 'store' | 'reports'>('stats');
   const [stats, setStats] = useState<any>(null);
   const [queue, setQueue] = useState<any[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -631,6 +644,7 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
   const [academicForm, setAcademicForm] = useState({ type: 'homework', title: '', content: '', grade: '', section: '', subject: '', due_date: '' });
   const [redeemForm, setRedeemForm] = useState({ code: '', reward_type: 'toins', reward_value: '', max_uses: 100, hint: '', is_treasure_hunt: false });
   const [storeItems, setStoreItems] = useState<any[]>([]);
+  const [adminReports, setAdminReports] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -654,6 +668,8 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
         fetch('/api/admin/tasks/submissions').then(r => r.json()).then(setTaskSubs);
       } else if (activeAdminTab === 'store') {
         fetch('/api/admin/store').then(r => r.json()).then(setStoreItems);
+      } else if (activeAdminTab === 'reports') {
+        fetch('/api/admin/reports').then(r => r.json()).then(setAdminReports);
       }
     };
     fetchData();
@@ -716,6 +732,7 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
         <AdminTab active={activeAdminTab === 'tasks'} onClick={() => setActiveAdminTab('tasks')} icon={<ClipboardList />} label="Tasks" count={taskSubs.length} />
         <AdminTab active={activeAdminTab === 'redeem'} onClick={() => setActiveAdminTab('redeem')} icon={<Gift />} label="Codes" />
         <AdminTab active={activeAdminTab === 'store'} onClick={() => setActiveAdminTab('store')} icon={<ShoppingBag />} label="Store" />
+        <AdminTab active={activeAdminTab === 'reports'} onClick={() => setActiveAdminTab('reports')} icon={<Flag />} label="Reports" count={adminReports.filter(r => r.status === 'pending').length} />
       </div>
 
       <AnimatePresence mode="wait">
@@ -1189,6 +1206,87 @@ function AdminDashboard({ user, onExit }: { user: User, onExit: () => void }) {
             </GlassCard>
           </motion.div>
         )}
+
+        {activeAdminTab === 'reports' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <h3 className="text-xl font-black tracking-tighter">INCIDENT REPORTS</h3>
+            <div className="grid grid-cols-1 gap-4">
+              {adminReports.map(report => (
+                <GlassCard key={report.id} className={cn("p-6", report.status === 'pending' ? "border-red-500/30" : "opacity-60")}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
+                        <Flag size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm">Reported by @{report.reporter_username}</p>
+                        <p className="text-[10px] text-white/40 font-mono uppercase tracking-widest">{report.target_type} ID: {report.target_id}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest",
+                        report.status === 'pending' ? "bg-red-500 text-white" : "bg-white/10 text-white/40"
+                      )}>
+                        {report.status}
+                      </span>
+                      <span className="text-[10px] text-white/20 font-mono">
+                        {format(new Date(report.created_at), 'MMM d, HH:mm')}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 mb-4">
+                    <p className="text-[10px] font-bold text-white/40 uppercase mb-2">Reason</p>
+                    <p className="text-sm">{report.reason}</p>
+                  </div>
+
+                  {report.target_type === 'post' && report.post_content && (
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/10 mb-4">
+                      <p className="text-[10px] font-bold text-white/40 uppercase mb-2">Post Content</p>
+                      <p className="text-sm italic text-white/70">"{report.post_content}"</p>
+                    </div>
+                  )}
+
+                  {report.status === 'pending' && (
+                    <div className="flex gap-3">
+                      <NeonButton 
+                        onClick={async () => {
+                          const res = await fetch(`/api/admin/reports/${report.id}/resolve`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'resolved' })
+                          });
+                          if (res.ok) fetch('/api/admin/reports').then(r => r.json()).then(setAdminReports);
+                        }}
+                        className="flex-1 text-xs py-2"
+                      >
+                        RESOLVE
+                      </NeonButton>
+                      <NeonButton 
+                        variant="ghost"
+                        onClick={async () => {
+                          const res = await fetch(`/api/admin/reports/${report.id}/resolve`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'dismissed' })
+                          });
+                          if (res.ok) fetch('/api/admin/reports').then(r => r.json()).then(setAdminReports);
+                        }}
+                        className="flex-1 text-xs py-2"
+                      >
+                        DISMISS
+                      </NeonButton>
+                    </div>
+                  )}
+                </GlassCard>
+              ))}
+              {adminReports.length === 0 && (
+                <GlassCard className="text-center py-12 opacity-40">No incident reports found.</GlassCard>
+              )}
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -1263,7 +1361,7 @@ const StoriesBar = ({ user, onStoryClick, onAddStory }: { user: User, onStoryCli
   );
 };
 
-const StoryViewer = ({ story, onClose }: { story: Story, onClose: () => void }) => {
+const StoryViewer = ({ story, onClose, onViewProfile }: { story: Story, onClose: () => void, onViewProfile: (id: string) => void }) => {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -1291,10 +1389,10 @@ const StoryViewer = ({ story, onClose }: { story: Story, onClose: () => void }) 
       </div>
 
       <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-10">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => story.user?.id && onViewProfile(story.user.id)}>
           <Avatar seed={story.user?.username || ''} src={story.user?.avatar} size="sm" />
           <div>
-            <p className="text-sm font-bold">{story.user?.username}</p>
+            <p className="text-sm font-bold group-hover:text-cyber-neon transition-colors">{story.user?.username}</p>
             <p className="text-[10px] text-white/40">{formatDistanceToNow(new Date(story.created_at))} ago</p>
           </div>
         </div>
@@ -1411,15 +1509,63 @@ const StoryUploader = ({ onClose, onUpload }: { onClose: () => void, onUpload: (
 
 // --- App Views (Gated) ---
 
-const PostCard = ({ post, onLike }: { post: any, onLike: () => void }) => {
+const PostCard = ({ post, onLike, onViewProfile, currentUser }: { post: any, onLike: () => void, onViewProfile: (id: string) => void, currentUser: User }) => {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [showMenu, setShowMenu] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [reportReason, setReportReason] = useState('');
+  const [history, setHistory] = useState<any[]>([]);
+  const isOwner = post.user_id === currentUser.id;
 
   const fetchComments = async () => {
     const res = await fetch(`/api/posts/${post.id}/comments`);
     if (res.ok) {
       setComments(await res.json());
+    }
+  };
+
+  const fetchHistory = async () => {
+    const res = await fetch(`/api/posts/${post.id}/history`);
+    if (res.ok) {
+      setHistory(await res.json());
+      setShowHistoryModal(true);
+    }
+  };
+
+  const handleEdit = async () => {
+    const res = await fetch(`/api/posts/${post.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: editContent })
+    });
+    if (res.ok) {
+      setShowEditModal(false);
+      window.location.reload();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this broadcast? It will be removed from the grid forever.")) return;
+    const res = await fetch(`/api/posts/${post.id}`, { method: 'DELETE' });
+    if (res.ok) {
+      window.location.reload();
+    }
+  };
+
+  const handleReport = async () => {
+    const res = await fetch(`/api/posts/${post.id}/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reportReason })
+    });
+    if (res.ok) {
+      setShowReportModal(false);
+      alert("Report submitted. Campus security will review this broadcast.");
     }
   };
 
@@ -1448,14 +1594,52 @@ const PostCard = ({ post, onLike }: { post: any, onLike: () => void }) => {
     >
       <GlassCard className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => onViewProfile(post.author_id || post.user_id)}>
             <Avatar seed={post.author_username || post.username || 'anon'} src={post.author_avatar || post.avatar} size="sm" />
             <div>
-              <p className="text-sm font-bold">{post.author || post.display_name || 'Unknown'}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold group-hover:text-cyber-neon transition-colors">{post.author || post.display_name || 'Unknown'}</p>
+                {post.is_edited && <span className="text-[9px] text-white/20 font-mono uppercase tracking-widest">(Edited)</span>}
+              </div>
               <p className="text-[10px] text-white/40 font-mono">@{post.author_username || post.username} • {formatDistanceToNow(new Date(post.timestamp))} ago</p>
             </div>
           </div>
-          <button className="p-2 text-white/20 hover:text-white transition-colors"><MoreHorizontal size={18} /></button>
+          <div className="relative">
+            <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-white/20 hover:text-white transition-colors"><MoreHorizontal size={18} /></button>
+            <AnimatePresence>
+              {showMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute right-0 top-full mt-2 w-48 bg-cyber-dark border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
+                  >
+                    {isOwner ? (
+                      <>
+                        <button onClick={() => { setShowEditModal(true); setShowMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:bg-white/5 hover:text-cyber-neon transition-colors">
+                          <Edit2 size={16} /> Edit Broadcast
+                        </button>
+                        <button onClick={() => { handleDelete(); setShowMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
+                          <Trash2 size={16} /> Delete Broadcast
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => { setShowReportModal(true); setShowMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:bg-white/5 hover:text-red-500 transition-colors">
+                        <Flag size={16} /> Report Broadcast
+                      </button>
+                    )}
+                    {post.is_edited && (
+                      <button onClick={() => { fetchHistory(); setShowMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:bg-white/5 hover:text-cyber-blue transition-colors border-t border-white/5">
+                        <History size={16} /> View Edit History
+                      </button>
+                    )}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
         
         <div className="space-y-3">
@@ -1507,10 +1691,10 @@ const PostCard = ({ post, onLike }: { post: any, onLike: () => void }) => {
           <div className="pt-4 border-t border-white/10 space-y-4">
             <div className="space-y-2">
               {comments.map(c => (
-                <div key={c.id} className="flex gap-2 text-xs">
+                <div key={c.id} className="flex gap-2 text-xs cursor-pointer group" onClick={() => onViewProfile(c.user_id)}>
                   <Avatar seed={c.username} src={c.avatar} size="sm" />
-                  <div className="bg-white/5 p-2 rounded-xl flex-1">
-                    <p className="font-bold">{c.username}</p>
+                  <div className="bg-white/5 p-2 rounded-xl flex-1 group-hover:bg-white/10 transition-colors">
+                    <p className="font-bold group-hover:text-cyber-neon transition-colors">{c.username}</p>
                     <p>{c.content}</p>
                   </div>
                 </div>
@@ -1528,11 +1712,98 @@ const PostCard = ({ post, onLike }: { post: any, onLike: () => void }) => {
           </div>
         )}
       </GlassCard>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {showEditModal && (
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
+              <GlassCard className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold">EDIT BROADCAST</h3>
+                  <button onClick={() => setShowEditModal(false)}><X size={20} /></button>
+                </div>
+                <textarea 
+                  value={editContent}
+                  onChange={e => setEditContent(e.target.value)}
+                  className="w-full h-40 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm outline-none focus:border-cyber-neon/50"
+                  placeholder="Update your broadcast..."
+                />
+                <div className="flex gap-4">
+                  <NeonButton variant="ghost" onClick={() => setShowEditModal(false)} className="flex-1">CANCEL</NeonButton>
+                  <NeonButton onClick={handleEdit} className="flex-1">SAVE CHANGES</NeonButton>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+
+        {showReportModal && (
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+              <GlassCard className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold">REPORT BROADCAST</h3>
+                  <button onClick={() => setShowReportModal(false)}><X size={20} /></button>
+                </div>
+                <div className="space-y-4">
+                  <p className="text-sm text-white/60">Why are you reporting this broadcast?</p>
+                  {['Spam', 'Harassment', 'Inappropriate Content', 'Misinformation', 'Other'].map(reason => (
+                    <button 
+                      key={reason}
+                      onClick={() => setReportReason(reason)}
+                      className={cn(
+                        "w-full text-left px-4 py-3 rounded-xl border transition-all text-sm",
+                        reportReason === reason ? "bg-red-500/10 border-red-500/50 text-red-500" : "bg-white/5 border-white/10 text-white/70 hover:bg-white/10"
+                      )}
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+                <NeonButton variant="ghost" onClick={handleReport} disabled={!reportReason} className="w-full text-red-500 border-red-500/30 hover:bg-red-500/10">
+                  SUBMIT REPORT
+                </NeonButton>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+
+        {showHistoryModal && (
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
+              <GlassCard className="p-8 space-y-6 max-h-[80vh] overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold">EDIT HISTORY</h3>
+                  <button onClick={() => setShowHistoryModal(false)}><X size={20} /></button>
+                </div>
+                <div className="space-y-6">
+                  {history.map((h, i) => (
+                    <div key={h.id} className="space-y-2 pb-6 border-b border-white/5 last:border-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">
+                          {i === 0 ? 'Original Version' : `Edit #${history.length - i}`}
+                        </span>
+                        <span className="text-[10px] font-mono text-white/20">
+                          {format(new Date(h.created_at), 'MMM d, HH:mm')}
+                        </span>
+                      </div>
+                      <div className="text-sm text-white/60 bg-white/5 p-4 rounded-xl italic">
+                        <ReactMarkdown>{h.content}</ReactMarkdown>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
 
-function HubView({ user }: { user: User }) {
+function HubView({ user, onViewProfile }: { user: User, onViewProfile: (id: string) => void }) {
   const [posts, setPosts] = useState<any[]>([]);
   const [activeStory, setActiveStory] = useState<Story | null>(null);
   const [isPosting, setIsPosting] = useState(false);
@@ -1542,10 +1813,26 @@ function HubView({ user }: { user: User }) {
   const [showChat, setShowChat] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [postVoice, setPostVoice] = useState<Blob | null>(null);
+  const [dailyBounty, setDailyBounty] = useState<any>(null);
 
   useEffect(() => {
     fetch('/api/posts').then(r => r.json()).then(setPosts);
+    fetch('/api/bounties/daily').then(r => r.json()).then(setDailyBounty);
   }, []);
+
+  const handleClaimBounty = async () => {
+    if (!dailyBounty || !dailyBounty.completed_at || dailyBounty.claimed) return;
+    const res = await fetch('/api/bounties/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bounty_id: dailyBounty.id })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert(`Bounty claimed! +${data.reward_xp}XP and +${data.reward_toins} Toins added to your account.`);
+      fetch('/api/bounties/daily').then(r => r.json()).then(setDailyBounty);
+    }
+  };
 
   const handleLike = async (postId: string) => {
     const res = await fetch(`/api/posts/${postId}/like`, { method: 'POST' });
@@ -1615,7 +1902,7 @@ function HubView({ user }: { user: User }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <AnimatePresence>
-        {activeStory && <StoryViewer story={activeStory} onClose={() => setActiveStory(null)} />}
+        {activeStory && <StoryViewer story={activeStory} onClose={() => setActiveStory(null)} onViewProfile={onViewProfile} />}
         {showStoryUploader && <StoryUploader onClose={() => setShowStoryUploader(false)} onUpload={handleStoryUpload} />}
         {showChat && (
           <Chat 
@@ -1623,10 +1910,7 @@ function HubView({ user }: { user: User }) {
             onClose={() => setShowChat(false)} 
             onViewProfile={(userId) => {
               setShowChat(false);
-              // Assuming there's a function to view profile, but I don't see it in scope here.
-              // I'll need to check if handleViewProfile is available or if I need to pass it down.
-              // Looking at the code, I don't see handleViewProfile in HubView props or scope.
-              // I might need to add it to HubView props or implement it.
+              onViewProfile(userId);
             }}
           />
         )}
@@ -1726,7 +2010,13 @@ function HubView({ user }: { user: User }) {
 
           <div className="space-y-6">
             {Array.isArray(posts) && posts.map(post => (
-              <PostCard key={post.id} post={post} onLike={() => handleLike(post.id)} />
+              <PostCard 
+                key={post.id} 
+                post={post} 
+                onLike={() => handleLike(post.id)} 
+                onViewProfile={onViewProfile} 
+                currentUser={user}
+              />
             ))}
           </div>
         </div>
@@ -1737,23 +2027,47 @@ function HubView({ user }: { user: User }) {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="space-y-6"
         >
-          <GlassCard className="bg-cyber-neon/5 border-cyber-neon/20">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-cyber-neon mb-4">Daily Bounty</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-white/70">Study for 30 mins</span>
-                <span className="text-cyber-neon font-mono">+50XP</span>
-              </div>
-              <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: '60%' }}
-                  transition={{ duration: 1, delay: 0.5 }}
-                  className="h-full bg-cyber-neon shadow-[0_0_10px_#00FF00]" 
-                />
-              </div>
-              <p className="text-[10px] text-white/40 text-right">60% Complete</p>
+          <GlassCard className={cn("border-cyber-neon/20", dailyBounty?.completed_at && !dailyBounty?.claimed ? "bg-cyber-neon/10 animate-pulse" : "bg-cyber-neon/5")}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-cyber-neon">Daily Bounty</h3>
+              {dailyBounty?.claimed ? (
+                <span className="text-[10px] bg-cyber-neon/20 text-cyber-neon px-2 py-0.5 rounded-full font-bold">CLAIMED</span>
+              ) : dailyBounty?.completed_at ? (
+                <span className="text-[10px] bg-cyber-neon text-black px-2 py-0.5 rounded-full font-bold">READY</span>
+              ) : (
+                <span className="text-[10px] bg-white/10 text-white/40 px-2 py-0.5 rounded-full font-bold">ACTIVE</span>
+              )}
             </div>
+            
+            {dailyBounty ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-white/70">{dailyBounty.title}</span>
+                  <span className="text-cyber-neon font-mono">+{dailyBounty.reward_xp}XP</span>
+                </div>
+                <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, (dailyBounty.progress / dailyBounty.target_value) * 100)}%` }}
+                    transition={{ duration: 1 }}
+                    className={cn("h-full shadow-[0_0_10px]", dailyBounty.completed_at ? "bg-cyber-neon shadow-cyber-neon" : "bg-cyber-blue shadow-cyber-blue")} 
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-[10px] text-white/40 font-mono">{dailyBounty.progress} / {dailyBounty.target_value}</p>
+                  {dailyBounty.completed_at && !dailyBounty.claimed && (
+                    <button 
+                      onClick={handleClaimBounty}
+                      className="text-[10px] font-bold text-cyber-neon hover:underline"
+                    >
+                      CLAIM REWARD
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-white/40 italic">No active bounties today.</p>
+            )}
           </GlassCard>
 
           <GlassCard>
@@ -1997,7 +2311,7 @@ function StudyView({ user }: { user: User }) {
   );
 }
 
-function ChatView({ user, socket }: { user: User, socket: Socket }) {
+function ChatView({ user, socket, onViewProfile }: { user: User, socket: Socket, onViewProfile: (id: string) => void }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -2189,10 +2503,12 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
                 <button onClick={() => setActiveConv(null)} className="md:hidden p-2 -ml-2 text-white/60 hover:text-white">
                   <ChevronRight className="rotate-180" size={24} />
                 </button>
-                <Avatar seed={activeConv.name || activeConv.id} size="sm" />
-                <div>
-                  <h3 className="font-bold text-sm">{activeConv.name || "Private Frequency"}</h3>
-                  <p className="text-[10px] text-cyber-neon font-mono uppercase tracking-widest animate-pulse">Online</p>
+                <div className="flex items-center gap-4 cursor-pointer group" onClick={() => activeConv.other_user_id && onViewProfile(activeConv.other_user_id)}>
+                  <Avatar seed={activeConv.name || activeConv.id} size="sm" />
+                  <div>
+                    <h3 className="font-bold text-sm group-hover:text-cyber-neon transition-colors">{activeConv.name || "Private Frequency"}</h3>
+                    <p className="text-[10px] text-cyber-neon font-mono uppercase tracking-widest animate-pulse">Online</p>
+                  </div>
                 </div>
               </div>
               <div className="flex gap-4">
@@ -2278,7 +2594,7 @@ function ChatView({ user, socket }: { user: User, socket: Socket }) {
   );
 }
 
-function MarketView({ user }: { user: User }) {
+function MarketView({ user, onViewProfile }: { user: User, onViewProfile: (id: string) => void }) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [category, setCategory] = useState('all');
   const [isCreating, setIsCreating] = useState(false);
@@ -2349,7 +2665,7 @@ function MarketView({ user }: { user: User }) {
         {filtered.map(item => (
           <GlassCard key={item.id} className="flex flex-col gap-4 group hover:border-cyber-neon/30 transition-all">
             <div className="aspect-square rounded-2xl bg-white/5 border border-white/10 overflow-hidden relative">
-              <img src={item.image_url || `https://picsum.photos/seed/${item.id}/400/400`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt={item.title} />
+              <img src={item.image_url || `https://picsum.photos/seed/${item.id}/400/400`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt={item.title} referrerPolicy="no-referrer" />
               <div className="absolute top-3 right-3">
                 <Badge variant={item.category === 'academic' ? 'blue' : 'neon'}>{item.category}</Badge>
               </div>
@@ -2363,7 +2679,7 @@ function MarketView({ user }: { user: User }) {
                 <Coins size={14} className="text-cyber-neon" />
                 <span className="text-sm font-mono font-bold">{item.price}</span>
               </div>
-              <NeonButton variant="ghost" className="text-xs py-1.5 px-3">Contact Seller</NeonButton>
+              <NeonButton variant="ghost" className="text-xs py-1.5 px-3" onClick={() => onViewProfile(item.seller_id)}>Contact Seller</NeonButton>
             </div>
           </GlassCard>
         ))}
@@ -2430,6 +2746,148 @@ function MarketView({ user }: { user: User }) {
     </motion.div>
   );
 }
+
+const PublicProfileModal = ({ userId, onClose, currentUser }: { userId: string, onClose: () => void, currentUser: User }) => {
+  const [profile, setProfile] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/users/${userId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) setError(data.error);
+        else setProfile(data);
+      })
+      .catch(() => setError("Failed to load profile"))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const handleAddFriend = async () => {
+    try {
+      const res = await fetch('/api/friendships', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receiverId: userId })
+      });
+      if (res.ok) {
+        alert("Friend request sent!");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to send request");
+      }
+    } catch (e) {
+      alert("Connection failed");
+    }
+  };
+
+  const handleDM = async () => {
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'direct', participantIds: [userId] })
+      });
+      if (res.ok) {
+        alert("Conversation started! Go to Chat tab.");
+        onClose();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to start conversation");
+      }
+    } catch (e) {
+      alert("Connection failed");
+    }
+  };
+
+  if (loading) return (
+    <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+      <div className="text-cyber-neon font-mono animate-pulse">DECRYPTING PROFILE...</div>
+    </div>
+  );
+
+  if (error || !profile) return (
+    <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+      <GlassCard className="text-center space-y-4">
+        <p className="text-red-500 font-bold">{error || "User not found"}</p>
+        <NeonButton onClick={onClose}>Close</NeonButton>
+      </GlassCard>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 overflow-y-auto">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-lg my-auto">
+        <GlassCard className="p-0 overflow-hidden relative">
+          <button onClick={onClose} className="absolute top-4 right-4 z-20 text-white/40 hover:text-white bg-black/20 p-1 rounded-full backdrop-blur-sm"><X size={20} /></button>
+          
+          <div className="h-32 w-full bg-white/5 relative">
+            <img src={profile.cover || "https://picsum.photos/seed/profile/1200/400"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <div className="absolute inset-0 bg-gradient-to-t from-cyber-dark to-transparent" />
+          </div>
+
+          <div className="px-6 pb-6 -mt-12 relative z-10 space-y-6">
+            <div className="flex items-end justify-between">
+              <div className="w-24 h-24 rounded-2xl border-4 border-cyber-dark overflow-hidden bg-cyber-dark">
+                <Avatar seed={profile.username} src={profile.avatar} size="lg" />
+              </div>
+              <div className="flex gap-2">
+                {profile.id !== currentUser.id && (
+                  <>
+                    <NeonButton onClick={handleAddFriend} variant="blue" className="px-4 py-2 text-xs">
+                      <UserPlus size={14} /> Add Friend
+                    </NeonButton>
+                    <NeonButton onClick={handleDM} className="px-4 py-2 text-xs">
+                      <MessageSquare size={14} /> DM
+                    </NeonButton>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-black tracking-tighter flex items-center gap-2">
+                {profile.display_name}
+                {profile.verification_status === 'approved' && <ShieldCheck size={18} className="text-cyber-neon" />}
+              </h3>
+              <p className="text-sm text-white/40 font-mono">@{profile.username}</p>
+            </div>
+
+            {profile.bio && (
+              <p className="text-sm text-white/60 leading-relaxed italic">"{profile.bio}"</p>
+            )}
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/10">
+                <p className="text-[10px] uppercase font-bold text-white/40">Level</p>
+                <p className="text-xl font-black text-cyber-neon">{profile.level}</p>
+              </div>
+              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/10">
+                <p className="text-[10px] uppercase font-bold text-white/40">XP</p>
+                <p className="text-xl font-black text-cyber-blue">{profile.xp}</p>
+              </div>
+              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/10">
+                <p className="text-[10px] uppercase font-bold text-white/40">Toins</p>
+                <p className="text-xl font-black text-cyber-pink">{profile.toins}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/60">Grid Rank</span>
+                <span className="font-bold text-cyber-neon uppercase tracking-widest">{profile.role}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/60">Joined Grid</span>
+                <span className="font-mono">{new Date(profile.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+      </motion.div>
+    </div>
+  );
+};
 
 const EditProfileModal = ({ user, onClose, onUpdate }: { user: User, onClose: () => void, onUpdate: (u: User) => void }) => {
   const [avatar, setAvatar] = useState(user.avatar || '');
@@ -2709,15 +3167,15 @@ function ProfileView({ user, setUser, onSecurity, onThemes, onStore, onTickets }
             <div className="space-y-3">
               <div className="flex justify-between text-xs">
                 <span className="text-white/60">Posts</span>
-                <span className="font-mono font-bold">124</span>
+                <span className="font-mono font-bold">{user.stats?.posts || 0}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-white/60">Followers</span>
-                <span className="font-mono font-bold">892</span>
+                <span className="font-mono font-bold">{user.stats?.followers || 0}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-white/60">Reputation</span>
-                <span className="font-mono font-bold text-cyber-neon">98%</span>
+                <span className="font-mono font-bold text-cyber-neon">{user.stats?.reputation ?? 100}%</span>
               </div>
             </div>
           </GlassCard>
@@ -2758,7 +3216,7 @@ function ProfileView({ user, setUser, onSecurity, onThemes, onStore, onTickets }
                         alert(`Success! Redeemed: ${data.reward_value} ${data.reward_type}`);
                         setShowRedeem(false);
                         setRedeemCode('');
-                        const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+                        const updatedUser = await fetch('/api/users/me').then(r => r.json());
                         setUser(updatedUser);
                       } else {
                         const err = await res.json();
@@ -2957,7 +3415,7 @@ function VaultView({ user, setUser }: { user: User, setUser: (u: User) => void }
     if (res.ok) {
       alert('Purchase successful!');
       fetch('/api/vault/listings').then(r => r.json()).then(setListings);
-      const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+      const updatedUser = await fetch('/api/users/me').then(r => r.json());
       setUser(updatedUser);
     } else {
       const err = await res.json();
@@ -3110,7 +3568,7 @@ function StoreView({ user, setUser }: { user: User, setUser: (u: User) => void }
       body: JSON.stringify({ itemId })
     });
     if (res.ok) {
-      const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+      const updatedUser = await fetch('/api/users/me').then(r => r.json());
       setUser(updatedUser);
       const inv = await fetch('/api/store/inventory').then(r => r.json());
       setInventory(inv);
@@ -3127,7 +3585,7 @@ function StoreView({ user, setUser }: { user: User, setUser: (u: User) => void }
       body: JSON.stringify({ itemId })
     });
     if (res.ok) {
-      const updatedUser = await fetch('/api/auth/me').then(r => r.json());
+      const updatedUser = await fetch('/api/users/me').then(r => r.json());
       setUser(updatedUser);
       const inv = await fetch('/api/store/inventory').then(r => r.json());
       setInventory(inv);
@@ -3508,7 +3966,7 @@ function TasksView({ user }: { user: User }) {
   );
 }
 
-function LeaderboardView({ user }: { user: User }) {
+function LeaderboardView({ user, onViewProfile }: { user: User, onViewProfile: (id: string) => void }) {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -3542,7 +4000,11 @@ function LeaderboardView({ user }: { user: User }) {
             </thead>
             <tbody>
               {leaderboard.map((u, i) => (
-                <tr key={u.id} className={cn("border-b border-white/5 hover:bg-white/5 transition-colors", u.id === user.id && "bg-cyber-neon/5")}>
+                <tr 
+                  key={u.id} 
+                  onClick={() => onViewProfile(u.id)}
+                  className={cn("border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer", u.id === user.id && "bg-cyber-neon/5")}
+                >
                   <td className="p-4">
                     <span className={cn(
                       "font-mono font-bold",

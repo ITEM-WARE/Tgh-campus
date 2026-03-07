@@ -247,10 +247,19 @@ export const Chat: React.FC<ChatProps> = ({ user, onClose, onViewProfile }) => {
                         <div className="w-10 h-10 rounded-full bg-cyber-dark border border-white/10 overflow-hidden">
                           <img src={u.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${u.display_name}`} className="w-full h-full object-cover" />
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <h4 className="font-bold text-sm">{u.display_name}</h4>
                           <p className="text-xs text-white/40">@{u.username}</p>
                         </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewProfile(u.id);
+                          }}
+                          className="p-2 text-cyber-neon hover:bg-cyber-neon/10 rounded-lg transition-colors"
+                        >
+                          <Search size={16} />
+                        </button>
                       </div>
                     ))
                   ) : (
